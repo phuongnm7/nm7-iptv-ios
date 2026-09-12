@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: ""
 targets:
   NM7IPTV:
@@ -31,6 +31,8 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        NSMicrophoneUsageDescription: NM7 IPTV dùng micro để tìm và mở kênh bằng giọng nói.
+        NSSpeechRecognitionUsageDescription: NM7 IPTV dùng nhận dạng giọng nói để tìm và mở kênh.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv

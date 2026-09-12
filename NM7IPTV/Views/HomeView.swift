@@ -56,8 +56,9 @@ struct HomeView: View {
             }
             .navigationTitle("NM7 IPTV")
             .searchable(text: $model.searchText, prompt: "Tìm kênh")
-            .navigationBarItems(trailing:
-                Button { Task { await model.reload() } } label: {
+            .navigationBarItems(
+                leading: VoiceSearchButton { model.openVoiceChannel($0) },
+                trailing: Button { Task { await model.reload() } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
             )

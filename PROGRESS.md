@@ -1,5 +1,16 @@
 # NM7 IPTV iOS — tiến độ dự án
 
+## Mốc 0.2.0 — điều khiển player và giọng nói
+
+- Thêm chuyển kênh trước/sau trong cùng nhóm bằng nút hoặc vuốt ngang trên video.
+- Thêm trạng thái đang tải và hộp thoại lỗi phát, có nút thử lại.
+- Thêm tìm và mở kênh bằng giọng nói tiếng Việt ở màn hình chính và trong player.
+- Chuẩn hóa câu lệnh như “mở kênh”, “xem kênh”, “phát kênh”, bỏ dấu và đối chiếu tên gần đúng.
+- Thêm quyền Microphone/Speech Recognition và unit test bộ ghép tên kênh.
+- Tách quản lý AVPlayer để theo dõi buffering/lỗi và giữ bộ đệm 12 giây.
+- Version dự kiến: 0.2.0 (build 2). Chờ workflow Xcode xác nhận.
+
+
 ## Mốc khởi tạo 0.1.0 — 2026-09-12
 
 - Kho riêng tư dành riêng cho iPhone/iPad; không dùng chung với Android Mobile hoặc Android TV.

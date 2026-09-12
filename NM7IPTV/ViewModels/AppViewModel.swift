@@ -74,6 +74,19 @@ final class AppViewModel: ObservableObject {
         selectedChannel = channel
     }
 
+    func bestVoiceMatch(for transcript: String, in candidates: [Channel]? = nil) -> Channel? {
+        VoiceChannelMatcher.bestMatch(for: transcript, channels: candidates ?? channels)
+    }
+
+    func openVoiceChannel(_ transcript: String) {
+        searchText = transcript
+        if let channel = bestVoiceMatch(for: transcript) {
+            play(channel)
+        } else {
+            errorMessage = "Không tìm thấy kênh phù hợp với “\(transcript)”."
+        }
+    }
+
     func toggleFavorite(_ channel: Channel) {
         libraryStore.toggleFavorite(channel)
         objectWillChange.send()

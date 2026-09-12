@@ -6,8 +6,8 @@ struct PlayerScreen: View {
     @ObservedObject var model: AppViewModel
     let initialChannel: Channel
     @State private var current: Channel
-    @State private var player = AVPlayer()
     @State private var group: String
+    @StateObject private var channelPlayer = ChannelPlayer()
 
     init(model: AppViewModel, initialChannel: Channel) {
         self.model = model
@@ -26,9 +26,15 @@ struct PlayerScreen: View {
                 let landscape = geometry.size.width > geometry.size.height
                 Group {
                     if landscape {
-                        HStack(spacing: 0) { video; channelPanel.frame(width: min(360, geometry.size.width * 0.34)) }
+                        HStack(spacing: 0) {
+                            video
+                            channelPanel.frame(width: min(360, geometry.size.width * 0.34))
+                        }
                     } else {
-                        VStack(spacing: 0) { video.frame(height: geometry.size.width * 9 / 16); channelPanel }
+                        VStack(spacing: 0) {
+                            video.frame(height: geometry.size.width * 9 / 16)
+                            channelPanel
+                        }
                     }
                 }
             }
@@ -37,20 +43,62 @@ struct PlayerScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 leading: Button("Đóng") { dismiss() },
-                trailing: Button {
-                    model.toggleFavorite(current)
-                } label: {
-                    Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
+                trailing: HStack(spacing: 16) {
+                    VoiceSearchButton { transcript in
+                        if let channel = model.bestVoiceMatch(for: transcript) { play(channel) }
+                        else { channelPlayer.showError("Không tìm thấy kênh “\(transcript)”.") }
+                    }
+                    Button {
+                        model.toggleFavorite(current)
+                    } label: {
+                        Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
+                    }
                 }
             )
         }
         .onAppear { play(current) }
-        .onDisappear { player.pause(); player.replaceCurrentItem(with: nil) }
+        .onDisappear { channelPlayer.stop() }
+        .alert("Không phát được kênh", isPresented: Binding(
+            get: { channelPlayer.errorMessage != nil },
+            set: { if !$0 { channelPlayer.errorMessage = nil } }
+        )) {
+            Button("Thử lại") { play(current) }
+            Button("Đóng", role: .cancel) {}
+        } message: {
+            Text(channelPlayer.errorMessage ?? "")
+        }
     }
 
     private var video: some View {
-        VideoPlayer(player: player)
+        VideoPlayer(player: channelPlayer.player)
             .background(Color.black)
+            .overlay {
+                if channelPlayer.isLoading {
+                    ProgressView("Đang mở \(current.name)…")
+                        .padding(16)
+                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                HStack {
+                    Button { changeChannel(by: -1) } label: {
+                        Label("Kênh trước", systemImage: "backward.end.fill")
+                    }
+                    Spacer()
+                    Button { changeChannel(by: 1) } label: {
+                        Label("Kênh sau", systemImage: "forward.end.fill")
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .font(.title2)
+                .padding()
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 50).onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    changeChannel(by: value.translation.width < 0 ? 1 : -1)
+                }
+            )
             .ignoresSafeArea(edges: .horizontal)
     }
 
@@ -74,7 +122,9 @@ struct PlayerScreen: View {
                         .frame(width: 52, height: 34)
                         Text(channel.name).lineLimit(1)
                         Spacer()
-                        if channel.id == current.id { Image(systemName: "waveform").foregroundStyle(.cyan) }
+                        if channel.id == current.id {
+                            Image(systemName: "waveform").foregroundStyle(.cyan)
+                        }
                     }
                 }
             }
@@ -83,20 +133,17 @@ struct PlayerScreen: View {
         .background(Color.black.opacity(0.94))
     }
 
+    private func changeChannel(by offset: Int) {
+        let list = groupChannels
+        guard !list.isEmpty, let index = list.firstIndex(where: { $0.id == current.id }) else { return }
+        let target = (index + offset + list.count) % list.count
+        play(list[target])
+    }
+
     private func play(_ channel: Channel) {
         current = channel
         group = channel.group
         model.libraryStore.addRecent(channel)
-        let asset = AVURLAsset(url: channel.streamURL, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": [
-                "User-Agent": channel.userAgent ?? "NM7-IPTV-iOS/0.1.0",
-                "Referer": channel.referrer ?? ""
-            ]
-        ])
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = 12
-        player.replaceCurrentItem(with: item)
-        player.automaticallyWaitsToMinimizeStalling = true
-        player.play()
+        channelPlayer.play(channel)
     }
 }
