@@ -1,5 +1,29 @@
 # NM7 IPTV iOS — tiến độ dự án
 
+## Bàn giao hiện tại — iOS 0.2.0 build 2 (2026-09-12)
+
+- Repo chuẩn: `phuongnm7/nm7-iptv-ios` (private), nhánh `main`; dự án độc lập với Android Mobile và Android TV.
+- Bản Android tham chiếu được khóa tại `phuongnm7/iptv-player-android`, nhánh `release/mobile-1.10.19-standard`.
+- Mã iOS hiện hành: SwiftUI + AVPlayer, yêu cầu iOS/iPadOS 16 trở lên.
+- Commit tính năng 0.2.0: `c03bc70907e77e5befc38576988619ca202e65c7`.
+- Commit workflow đóng gói IPA: `4b336dddc42b480d42928c940238766621b7d6c5`.
+- Workflow bàn giao: run `34680969017`, job `103519410409`.
+- Build Simulator, build thiết bị iPhone/iPad, đóng gói và upload IPA đều **SUCCESS**.
+- Artifact: `NM7-IPTV-iOS-0.2.0-unsigned-IPA`, ID `10294078290`, kích thước archive `222883` bytes.
+- Artifact digest: `sha256:725a4d34237010ec2cc8598c32849daad035534d5fb8a9cc60f84a86388cecbf`.
+- Trong artifact có `NM7-IPTV-iOS-0.2.0-unsigned.ipa` và file SHA-256 tương ứng.
+- IPA chưa ký; cần ký bằng Apple ID/Apple Developer qua Sideloadly, AltStore hoặc Xcode trước khi cài trên iPad thật.
+
+### Kiểm thử thiết bị thật cần làm tiếp
+
+1. Ký và cài IPA lên iPhone/iPad, bật Developer Mode và tin cậy hồ sơ nhà phát triển nếu iOS yêu cầu.
+2. Xác nhận nguồn mặc định tải được, URL nguồn mặc định không xuất hiện trong phần quản lý nguồn.
+3. Thử thêm/chọn/xóa nguồn tùy chỉnh và xác nhận ứng dụng quay lại nguồn mặc định.
+4. Thử HLS, logo kênh, nhóm, tìm kiếm, Yêu thích/Gần đây, vuốt đổi kênh và nút trước/sau.
+5. Cho phép Microphone/Speech Recognition; thử gọi kênh ở màn hình chính và khi đang xem.
+6. Ghi lại video hoặc thông báo lỗi từ thiết bị thật để xử lý mốc tiếp theo.
+7. Muốn phát hành IPA ký sẵn/TestFlight cần Apple Development Team, certificate và provisioning profile của chủ dự án.
+
 ## Mốc 0.2.0 — điều khiển player và giọng nói
 
 - Thêm chuyển kênh trước/sau trong cùng nhóm bằng nút hoặc vuốt ngang trên video.
