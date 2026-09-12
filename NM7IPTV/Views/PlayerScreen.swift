@@ -35,18 +35,14 @@ struct PlayerScreen: View {
             .background(Color.black)
             .navigationTitle(current.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Đóng") { dismiss() }
+            .navigationBarItems(
+                leading: Button("Đóng") { dismiss() },
+                trailing: Button {
+                    model.toggleFavorite(current)
+                } label: {
+                    Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        model.toggleFavorite(current)
-                    } label: {
-                        Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
-                    }
-                }
-            }
+            )
         }
         .onAppear { play(current) }
         .onDisappear { player.pause(); player.replaceCurrentItem(with: nil) }

@@ -46,13 +46,11 @@ struct HomeView: View {
             }
             .navigationTitle("NM7 IPTV")
             .searchable(text: $model.searchText, prompt: "Tìm kênh")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await model.reload() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
+            .navigationBarItems(trailing:
+                Button { Task { await model.reload() } } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
-            }
+            )
             .alert("Lỗi", isPresented: Binding(
                 get: { model.errorMessage != nil && !model.channels.isEmpty },
                 set: { if !$0 { model.errorMessage = nil } }
