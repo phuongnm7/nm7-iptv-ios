@@ -24,9 +24,14 @@ final class ChannelPlayer: ObservableObject {
     func play(_ channel: Channel) {
         errorMessage = nil
         isLoading = true
-        var headers = ["User-Agent": channel.userAgent ?? "NM7-IPTV-iOS/0.2.1"]
-        if let referrer = channel.referrer, !referrer.isEmpty { headers["Referer"] = referrer }
-        let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        var headers = channel.httpHeaders
+        if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
+            headers["User-Agent"] = "NM7-IPTV-iOS/0.2.2"
+        }
+        let asset = AVURLAsset(
+            url: channel.streamURL,
+            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        )
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 12
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -37,7 +42,8 @@ final class ChannelPlayer: ObservableObject {
                     self.isLoading = false
                 case .failed:
                     self.isLoading = false
-                    self.errorMessage = item.error?.localizedDescription ?? "Luồng phát không khả dụng."
+                    let detail = (item.error as NSError?)?.userInfo[NSLocalizedFailureReasonErrorKey] as? String
+                    self.errorMessage = detail ?? item.error?.localizedDescription ?? "Luồng phát không khả dụng."
                 default:
                     break
                 }
@@ -47,9 +53,7 @@ final class ChannelPlayer: ObservableObject {
         player.play()
     }
 
-    func showError(_ message: String) {
-        errorMessage = message
-    }
+    func showError(_ message: String) { errorMessage = message }
 
     func stop() {
         player.pause()

@@ -1,5 +1,16 @@
 # NM7 IPTV iOS — tiến độ dự án
 
+## Mốc sửa phát kênh 0.2.2 build 4
+
+- Thiết bị thật cài 0.2.1 thành công nhưng AVPlayer báo `Cannot Open` khi mở kênh.
+- Danh sách nhóm, tên và logo đều tải được; lỗi được khoanh vùng ở URL phát/header.
+- Đồng bộ cách xử lý từ parser Android chuẩn: tách header gắn sau URL bằng dấu `|`, giải mã phần trăm và không đưa chuỗi header vào URL AVPlayer.
+- Hỗ trợ `#EXTVLCOPT`, `#EXTHTTP`, cùng User-Agent, Referer, Origin, Cookie và header hợp lệ khác.
+- AVPlayer nhận toàn bộ header của kênh; hộp lỗi bổ sung failure reason khi iOS cung cấp.
+- Thêm unit test cho URL inline-header và JSON header.
+- Version 0.2.2 build 4; chờ workflow build, kiểm tra IPA và thử lại trên iPad.
+
+
 ## Mốc sửa đóng gói 0.2.1 build 3
 
 - Sideloadly 0.60 báo `Guru Meditation ... Can't listdir a file` với IPA 0.2.0.
