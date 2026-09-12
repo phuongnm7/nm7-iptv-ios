@@ -13,11 +13,47 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
       - name: Generate Xcode project
         run: xcodegen generate
-      - name: Build iPhone and iPad app
+
+      - name: Build iPhone and iPad Simulator app
+        run: >
+          xcodebuild
+          -project NM7IPTV.xcodeproj
+          -scheme NM7IPTV
+          -sdk iphonesimulator
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Build unsigned iPhone and iPad device app
+        run: >
+          xcodebuild
+          -project NM7IPTV.xcodeproj
+          -scheme NM7IPTV
+          -sdk iphoneos
+          -configuration Release
+          -derivedDataPath build/device
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          build
+
+      - name: Package unsigned IPA
         run: |
-          set -o pipefail
-          xcodebuild             -project NM7IPTV.xcodeproj             -scheme NM7IPTV             -sdk iphonesimulator             -configuration Debug             CODE_SIGNING_ALLOWED=NO             build | xcpretty
+          mkdir -p Payload
+          cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
+          ditto -c -k --sequesterRsrc Payload NM7-IPTV-iOS-0.2.0-unsigned.ipa
+          shasum -a 256 NM7-IPTV-iOS-0.2.0-unsigned.ipa > NM7-IPTV-iOS-0.2.0-unsigned.ipa.sha256
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NM7-IPTV-iOS-0.2.0-unsigned-IPA
+          path: |
+            NM7-IPTV-iOS-0.2.0-unsigned.ipa
+            NM7-IPTV-iOS-0.2.0-unsigned.ipa.sha256
+          retention-days: 30
