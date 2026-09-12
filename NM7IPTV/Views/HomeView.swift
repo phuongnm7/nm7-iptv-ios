@@ -27,8 +27,18 @@ struct HomeView: View {
                     ProgressView("Đang tải danh sách kênh…")
                     Spacer()
                 } else if model.visibleChannels.isEmpty {
-                    ContentUnavailableView("Không có kênh", systemImage: "tv.slash",
-                                           description: Text(model.errorMessage ?? "Thử chọn nhóm hoặc nguồn khác."))
+                    VStack(spacing: 12) {
+                        Image(systemName: "tv.slash")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.secondary)
+                        Text("Không có kênh").font(.headline)
+                        Text(model.errorMessage ?? "Thử chọn nhóm hoặc nguồn khác.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 12) {
