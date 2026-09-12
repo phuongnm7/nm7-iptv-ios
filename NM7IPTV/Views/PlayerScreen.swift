@@ -70,36 +70,43 @@ struct PlayerScreen: View {
     }
 
     private var video: some View {
-        VideoPlayer(player: channelPlayer.player)
-            .background(Color.black)
-            .overlay {
-                if channelPlayer.isLoading {
-                    ProgressView("Đang mở \(current.name)…")
-                        .padding(16)
-                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
+        ZStack {
+            VideoPlayer(player: channelPlayer.player)
+                .opacity(channelPlayer.engine == .avPlayer ? 1 : 0)
+                .allowsHitTesting(channelPlayer.engine == .avPlayer)
+
+            VLCVideoSurface(channelPlayer: channelPlayer)
+                .opacity(channelPlayer.engine == .vlc ? 1 : 0)
+                .allowsHitTesting(false)
+
+            if channelPlayer.isLoading {
+                ProgressView("Đang mở \(current.name)…")
+                    .padding(16)
+                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .background(Color.black)
+        .overlay(alignment: .bottom) {
+            HStack {
+                Button { changeChannel(by: -1) } label: {
+                    Label("Kênh trước", systemImage: "backward.end.fill")
+                }
+                Spacer()
+                Button { changeChannel(by: 1) } label: {
+                    Label("Kênh sau", systemImage: "forward.end.fill")
                 }
             }
-            .overlay(alignment: .bottom) {
-                HStack {
-                    Button { changeChannel(by: -1) } label: {
-                        Label("Kênh trước", systemImage: "backward.end.fill")
-                    }
-                    Spacer()
-                    Button { changeChannel(by: 1) } label: {
-                        Label("Kênh sau", systemImage: "forward.end.fill")
-                    }
-                }
-                .labelStyle(.iconOnly)
-                .font(.title2)
-                .padding()
+            .labelStyle(.iconOnly)
+            .font(.title2)
+            .padding()
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 50).onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                changeChannel(by: value.translation.width < 0 ? 1 : -1)
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 50).onEnded { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    changeChannel(by: value.translation.width < 0 ? 1 : -1)
-                }
-            )
-            .ignoresSafeArea(edges: .horizontal)
+        )
+        .ignoresSafeArea(edges: .horizontal)
     }
 
     private var channelPanel: some View {

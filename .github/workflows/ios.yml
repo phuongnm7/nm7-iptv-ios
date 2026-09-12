@@ -10,20 +10,24 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          pod --version
 
-      - name: Generate Xcode project
-        run: xcodegen generate
+      - name: Generate Xcode workspace
+        run: |
+          xcodegen generate
+          pod install --repo-update
 
       - name: Build iPhone and iPad Simulator app
         run: >
           xcodebuild
-          -project NM7IPTV.xcodeproj
+          -workspace NM7IPTV.xcworkspace
           -scheme NM7IPTV
           -sdk iphonesimulator
           -configuration Debug
@@ -33,7 +37,7 @@ jobs:
       - name: Build unsigned iPhone and iPad device app
         run: >
           xcodebuild
-          -project NM7IPTV.xcodeproj
+          -workspace NM7IPTV.xcworkspace
           -scheme NM7IPTV
           -sdk iphoneos
           -configuration Release
@@ -47,18 +51,19 @@ jobs:
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
           xattr -cr Payload
-          /usr/bin/zip -qry -X NM7-IPTV-iOS-0.2.2-unsigned.ipa Payload
-          unzip -t NM7-IPTV-iOS-0.2.2-unsigned.ipa
-          unzip -Z1 NM7-IPTV-iOS-0.2.2-unsigned.ipa > ipa-contents.txt
+          /usr/bin/zip -qry -X NM7-IPTV-iOS-0.3.0-unsigned.ipa Payload
+          unzip -t NM7-IPTV-iOS-0.3.0-unsigned.ipa
+          unzip -Z1 NM7-IPTV-iOS-0.3.0-unsigned.ipa > ipa-contents.txt
           grep -Fxq "Payload/NM7IPTV.app/Info.plist" ipa-contents.txt
           grep -Fxq "Payload/NM7IPTV.app/NM7IPTV" ipa-contents.txt
-          shasum -a 256 NM7-IPTV-iOS-0.2.2-unsigned.ipa > NM7-IPTV-iOS-0.2.2-unsigned.ipa.sha256
+          find Payload/NM7IPTV.app/Frameworks -maxdepth 2 -name "*VLCKit*" -print -quit | grep -q .
+          shasum -a 256 NM7-IPTV-iOS-0.3.0-unsigned.ipa > NM7-IPTV-iOS-0.3.0-unsigned.ipa.sha256
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: NM7-IPTV-iOS-0.2.2-unsigned-IPA
+          name: NM7-IPTV-iOS-0.3.0-unsigned-IPA
           path: |
-            NM7-IPTV-iOS-0.2.2-unsigned.ipa
-            NM7-IPTV-iOS-0.2.2-unsigned.ipa.sha256
+            NM7-IPTV-iOS-0.3.0-unsigned.ipa
+            NM7-IPTV-iOS-0.3.0-unsigned.ipa.sha256
           retention-days: 30
