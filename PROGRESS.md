@@ -8,7 +8,9 @@
 - Chuẩn hóa câu lệnh như “mở kênh”, “xem kênh”, “phát kênh”, bỏ dấu và đối chiếu tên gần đúng.
 - Thêm quyền Microphone/Speech Recognition và unit test bộ ghép tên kênh.
 - Tách quản lý AVPlayer để theo dõi buffering/lỗi và giữ bộ đệm 12 giây.
-- Version dự kiến: 0.2.0 (build 2). Chờ workflow Xcode xác nhận.
+- Version: 0.2.0 (build 2).
+- Commit: `c03bc70907e77e5befc38576988619ca202e65c7`.
+- Workflow run `34680761012`, job `103518856567`: tạo Xcode project và build iPhone/iPad Simulator **SUCCESS**.
 
 
 ## Mốc khởi tạo 0.1.0 — 2026-09-12
