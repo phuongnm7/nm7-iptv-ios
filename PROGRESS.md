@@ -16,4 +16,6 @@
 
 - AVPlayer hỗ trợ tốt HLS và các định dạng iOS hỗ trợ gốc; DASH, RTSP, RTMP và UDP chưa được triển khai ở mốc đầu.
 - Chưa ký IPA vì cần Apple Development Team/certificate/provisioning profile của chủ dự án.
-- Cần xác nhận workflow build PASS trước khi chuyển sang kiểm thử thiết bị thật.
+- Workflow run `34676835584`, job `103508071797`: tạo project bằng XcodeGen và build ứng dụng cho iPhone/iPad Simulator đều **SUCCESS**.
+- Commit build thành công: `281610192cff8013fe0c28571f5cd87a7b69ddf0`.
+- Bước tiếp theo: bổ sung icon/hình nền chính thức, kiểm thử phát playlist trên thiết bị thật và cấu hình ký ứng dụng.
