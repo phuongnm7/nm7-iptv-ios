@@ -46,14 +46,38 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
-          ditto -c -k --sequesterRsrc Payload NM7-IPTV-iOS-0.2.0-unsigned.ipa
-          shasum -a 256 NM7-IPTV-iOS-0.2.0-unsigned.ipa > NM7-IPTV-iOS-0.2.0-unsigned.ipa.sha256
+          xattr -cr Payload
+          /usr/bin/zip -qry -X NM7-IPTV-iOS-0.2.1-unsigned.ipa Payload
+          unzip -t NM7-IPTV-iOS-0.2.1-unsigned.ipa
+          unzip -Z1 NM7-IPTV-iOS-0.2.1-unsigned.ipa | grep -q '^Payload/NM7IPTV.app/Info.plist -a 256 NM7-IPTV-iOS-0.2.1-unsigned.ipa > NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: NM7-IPTV-iOS-0.2.0-unsigned-IPA
+          name: NM7-IPTV-iOS-0.2.1-unsigned-IPA
           path: |
-            NM7-IPTV-iOS-0.2.0-unsigned.ipa
-            NM7-IPTV-iOS-0.2.0-unsigned.ipa.sha256
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
+          retention-days: 30
+
+          unzip -Z1 NM7-IPTV-iOS-0.2.1-unsigned.ipa | grep -q '^Payload/NM7IPTV.app/NM7IPTV -a 256 NM7-IPTV-iOS-0.2.1-unsigned.ipa > NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NM7-IPTV-iOS-0.2.1-unsigned-IPA
+          path: |
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
+          retention-days: 30
+
+          shasum -a 256 NM7-IPTV-iOS-0.2.1-unsigned.ipa > NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NM7-IPTV-iOS-0.2.1-unsigned-IPA
+          path: |
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa
+            NM7-IPTV-iOS-0.2.1-unsigned.ipa.sha256
           retention-days: 30

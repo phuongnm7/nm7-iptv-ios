@@ -15,7 +15,7 @@ actor PlaylistService {
 
     func fetch(from source: PlaylistSource) async throws -> [Channel] {
         var request = URLRequest(url: source.url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 25)
-        request.setValue("NM7-IPTV-iOS/0.1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("NM7-IPTV-iOS/0.2.1", forHTTPHeaderField: "User-Agent")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {

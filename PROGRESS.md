@@ -1,5 +1,14 @@
 # NM7 IPTV iOS — tiến độ dự án
 
+## Mốc sửa đóng gói 0.2.1 build 3
+
+- Sideloadly 0.60 báo `Guru Meditation ... Can't listdir a file` với IPA 0.2.0.
+- Nguyên nhân được khoanh vùng ở cấu trúc archive do cách đóng gói bằng `ditto --sequesterRsrc`, không phải kết nối iPad hoặc Apple ID.
+- Đổi sang ZIP IPA chuẩn, loại bỏ extended attributes và không đưa resource-fork metadata vào archive.
+- Workflow bắt buộc kiểm tra ZIP và xác nhận tồn tại `Payload/NM7IPTV.app/Info.plist` cùng executable trước khi upload.
+- Tăng version lên 0.2.1 build 3 và đồng bộ User-Agent. Chờ workflow xác nhận và tạo artifact mới.
+
+
 ## Bàn giao hiện tại — iOS 0.2.0 build 2 (2026-09-12)
 
 - Repo chuẩn: `phuongnm7/nm7-iptv-ios` (private), nhánh `main`; dự án độc lập với Android Mobile và Android TV.

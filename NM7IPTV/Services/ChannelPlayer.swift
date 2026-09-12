@@ -24,7 +24,7 @@ final class ChannelPlayer: ObservableObject {
     func play(_ channel: Channel) {
         errorMessage = nil
         isLoading = true
-        var headers = ["User-Agent": channel.userAgent ?? "NM7-IPTV-iOS/0.2.0"]
+        var headers = ["User-Agent": channel.userAgent ?? "NM7-IPTV-iOS/0.2.1"]
         if let referrer = channel.referrer, !referrer.isEmpty { headers["Referer"] = referrer }
         let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         let item = AVPlayerItem(asset: asset)
