@@ -1,0 +1,57 @@
+name: NM7IPTV
+options:
+  bundleIdPrefix: vn.phuongnm7
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+targets:
+  NM7IPTV:
+    type: application
+    platform: iOS
+    sources:
+      - NM7IPTV
+    info:
+      path: NM7IPTV/Info.plist
+      properties:
+        CFBundleDisplayName: NM7 IPTV
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+  NM7IPTVTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - NM7IPTVTests
+    dependencies:
+      - target: NM7IPTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv.tests
+schemes:
+  NM7IPTV:
+    build:
+      targets:
+        NM7IPTV: all
+        NM7IPTVTests: [test]
+    test:
+      targets:
+        - NM7IPTVTests

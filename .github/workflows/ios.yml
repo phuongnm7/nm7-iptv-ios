@@ -1,0 +1,23 @@
+name: Build NM7 IPTV iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build iPhone and iPad app
+        run: |
+          set -o pipefail
+          xcodebuild             -project NM7IPTV.xcodeproj             -scheme NM7IPTV             -sdk iphonesimulator             -configuration Debug             CODE_SIGNING_ALLOWED=NO             build | xcpretty
