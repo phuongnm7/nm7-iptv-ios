@@ -38,6 +38,25 @@ struct Channel: Identifiable, Codable, Hashable {
         options.contains { $0.lowercased().contains("license") || $0.lowercased().contains("drm") }
     }
 
+    /// Raw IPTV/MPEG-TS feeds should use LibVLC on iOS. AVPlayer is best
+    /// reserved for HLS/fMP4; many sports providers use extensionless HTTP
+    /// endpoints, so classification cannot depend only on ".ts".
+    var prefersVLC: Bool {
+        guard !isDASH, !isHLS,
+              let scheme = streamURL.scheme?.lowercased(),
+              ["http", "https", "rtsp", "rtsps", "rtmp", "rtmps", "udp", "srt"].contains(scheme)
+        else {
+            return false
+        }
+
+        let path = streamURL.path.lowercased()
+        if [".mp4", ".m4v", ".mov"].contains(where: { path.hasSuffix($0) }) {
+            return false
+        }
+
+        return true
+    }
+
     init(
         name: String,
         group: String,
