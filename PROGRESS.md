@@ -18,13 +18,10 @@
 - iOS Bundle Version: **69**.
 - Deployment target: **iOS/iPadOS 16.0+**.
 - Thiết bị: **iPhone + iPad**.
-- GitHub Actions run **#26: SUCCESS**.
-- Đã pass: Generate Xcode workspace; build Simulator; unit tests; build device app; package + validate unsigned IPA; upload artifact.
-- Artifact: `NM7-IPTV-iOS-1.0.69-unsigned-IPA` (ID `11326001848`).
-- Kích thước artifact: **14,563,563 bytes**.
-- SHA-256: `b394c476eb76e1cbb665a1a58b02af29d0af374f053af204a49b088a2a92d726`.
-- Commit của run #26: `b150351531481ba5dddd0eeea4a0dfd830e19c85`.
-- IPA hiện **unsigned**; cài thiết bị thật cần ký bằng Apple Development/Ad Hoc hoặc Sideloadly.
+- **Last fully verified CI:** run **#41**, commit `a4ee550cfcd2ee2091583951c31c1b6279dc6a64`; Simulator build, unit tests, unsigned device build và IPA validation đều SUCCESS.
+- Các commit CENC/UI mới hơn **chưa thể CI-verify** vì GitHub Actions của repository private hiện fail ở cấp job startup, trước step đầu tiên; test smoke xác nhận cả Ubuntu và macOS đều bị fail cùng kiểu.
+- GitHub-hosted runners cho private repository dùng quota GitHub Actions; khi quota/billing bị chặn, workflow có thể không được cấp runner.
+- **Không phát hành IPA trung gian** từ các run cũ cho người dùng cuối.
 
 ### Những phần đã được chuyển sang nền iOS 1.0.69
 
