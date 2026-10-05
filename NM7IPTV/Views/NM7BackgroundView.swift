@@ -22,8 +22,14 @@ struct NM7BackgroundView: View {
         .ignoresSafeArea()
         .clipped()
         .onAppear {
-            // Android TV 1.0.69 uses drawable/nm7_default_background_new.
-            image = UIImage(named: "nm7_default_background_new")
+            // Exact Android TV 1.0.69 resource: drawable/nm7_default_background_new.webp.
+            // Load from the bundle explicitly so this does not depend on asset-catalog lookup.
+            if let url = Bundle.main.url(forResource: "nm7_default_background_new", withExtension: "webp") {
+                image = UIImage(contentsOfFile: url.path)
+            }
+            if image == nil {
+                image = UIImage(named: "nm7_default_background_new")
+            }
         }
     }
 }
