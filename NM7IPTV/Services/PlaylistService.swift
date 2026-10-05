@@ -34,7 +34,7 @@ actor PlaylistService {
             cachePolicy: .reloadIgnoringLocalCacheData,
             timeoutInterval: 30
         )
-        request.setValue("NM7-TV-iOS/1.0.69", forHTTPHeaderField: "User-Agent")
+        request.setValue("NM7-TV-iOS/1.0.70", forHTTPHeaderField: "User-Agent")
         request.setValue("no-cache, no-store, max-age=0", forHTTPHeaderField: "Cache-Control")
         request.setValue("application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*", forHTTPHeaderField: "Accept")
 
@@ -91,6 +91,27 @@ actor PlaylistService {
         }
 
         return LoadedPlaylist(channels: result.channels, epgURL: result.epgURL)
+    }
+
+    private func fetchText(url: URL) async throws -> String {
+        var request = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 15
+        )
+        request.setValue("NM7-TV-iOS/1.0.70", forHTTPHeaderField: "User-Agent")
+        request.setValue("no-cache, no-store, max-age=0", forHTTPHeaderField: "Cache-Control")
+        request.setValue("application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              200..<300 ~= http.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+
+        return String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
     }
 
     private struct CachePayload: Codable {
