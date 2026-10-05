@@ -17,13 +17,27 @@
 - iOS Marketing Version: **1.0.69**.
 - iOS Bundle Version: **69**.
 - Deployment target: **iOS/iPadOS 16.0+**.
-- Thiết bị: **iPhone + iPad**.
-- **Last fully verified CI:** run **#41**, commit `a4ee550cfcd2ee2091583951c31c1b6279dc6a64`; Simulator build, unit tests, unsigned device build và IPA validation đều SUCCESS.
-- Các commit CENC/UI mới hơn **chưa thể CI-verify** vì GitHub Actions của repository private hiện fail ở cấp job startup, trước step đầu tiên; test smoke xác nhận cả Ubuntu và macOS đều bị fail cùng kiểu.
-- GitHub-hosted runners cho private repository dùng quota GitHub Actions; khi quota/billing bị chặn, workflow có thể không được cấp runner.
-- Repository hiện đã chuyển sang **Public** để sử dụng GitHub-hosted runner cho quá trình build iOS.
-- Sau khi public, cần một push mới để kích hoạt lại workflow trên commit hiện tại; không sử dụng các IPA của run cũ.
-- **Không phát hành IPA trung gian** từ các run cũ cho người dùng cuối.
+- Thiết bị mục tiêu: **iPhone + iPad**.
+- Repository đã chuyển sang **Public** để GitHub-hosted macOS runner có thể chạy build.
+- Workflow build cuối cùng đã xác minh: **run #147**, commit **`d00b0f8bd818cbc79eb1d17f7a351eee272d002b`**.
+- Kết quả run #147:
+  - **Simulator build: SUCCESS**
+  - **Unit tests: SUCCESS**
+  - **Device Release build: SUCCESS**
+  - **Package IPA: SUCCESS**
+  - **Upload artifact: SUCCESS**
+- Artifact cuối: **`NM7-IPTV-iOS-1.0.69-final-unsigned-IPA`**.
+- Artifact ID: **`11334156283`**.
+- Artifact digest: **`sha256:1224c6140cc6e061dddce2c03ebe6967d69b66c360a70e9203b42cc285f88df7`**.
+- IPA unsigned đã được kiểm tra sau khi tải về:
+  - SHA256 IPA: **`1fdb08eb4e803cc79148a3269bbd8b2ae65f5062f6b40d0ff75d3832374a4fb8`**.
+  - ZIP integrity: **PASS**.
+  - `Payload/NM7IPTV.app/NM7IPTV`: **PASS**.
+  - `CFBundleShortVersionString = 1.0.69`: **PASS**.
+  - `CFBundleVersion = 69`: **PASS**.
+  - App bundle không còn đóng `project.yml` hoặc `UPlayer.podspec` như resource.
+- Đường tải artifact của GitHub Actions có thời hạn; IPA đầu ra đã được tải về để bàn giao.
+- IPA là **unsigned**, cần ký bằng Apple ID/Sideloadly hoặc phương thức phân phối Apple phù hợp trước khi cài thiết bị thật.
 
 ### Những phần đã được chuyển sang nền iOS 1.0.69
 
