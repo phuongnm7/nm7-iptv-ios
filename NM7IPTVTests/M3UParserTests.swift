@@ -2,6 +2,17 @@ import XCTest
 @testable import NM7IPTV
 
 final class M3UParserTests: XCTestCase {
+    func testDetectsExpiredSignedTV360URL() throws {
+        let channel = Channel(
+            name: "ON SPORTS",
+            group: "VTVcab",
+            logoURL: nil,
+            streamURL: URL(string: "https://example.com/tv360.php?id=173&expires=1788503111&token=redacted")!
+        )
+        XCTAssertEqual(channel.signedURLExpirationDate, Date(timeIntervalSince1970: 1_788_503_111))
+        XCTAssertTrue(channel.hasExpiredSignedURL(now: Date(timeIntervalSince1970: 1_791_170_000)))
+    }
+
     func testParsesGroupsLogosVLCHeadersAndEPG() throws {
         let input = """
         #EXTM3U url-tvg="https://example.com/epg.xml"
