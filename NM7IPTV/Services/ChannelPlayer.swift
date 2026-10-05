@@ -28,6 +28,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
     private var dashBridge: DashPlayerBridge?
     private var clearKeySession: AVContentKeySession?
     private var clearKeyDelegate: ClearKeyContentKeySession?
+    private var cencProcessor: CENCResourceProcessor?
 
     override init() {
         super.init()
@@ -98,7 +99,16 @@ final class ChannelPlayer: NSObject, ObservableObject {
     }
 
     private func startDASH(channel: Channel, drm: DRMInfo) {
+        var headers = channel.httpHeaders
+        if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
+            headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
+        }
+
         let dash = UPlayer()
+        dash.requestHeaders = headers
+        let processor = CENCResourceProcessor(drm: drm, headers: headers)
+        cencProcessor = processor
+        dash.mediaResourceProcessor = processor
         let queue = UPlayerAssetProcessorsQueue()
         queue.add(processor: UPlayerMetadataDownloader(id: "metadata"))
         queue.add(processor: UPlayerMPDParser(id: "mpd-parser"))
@@ -111,21 +121,6 @@ final class ChannelPlayer: NSObject, ObservableObject {
         dashBridge = bridge
         dash.delegate = bridge
         dashPlayer = dash
-
-        let delegate = ClearKeyContentKeySession(drm: drm, headers: channel.httpHeaders) { [weak self] message in
-            Task { @MainActor in self?.showError(message) }
-        }
-        clearKeyDelegate = delegate
-        let session = AVContentKeySession(keySystem: .clearKey)
-        session.setDelegate(delegate, queue: DispatchQueue(label: "nm7.clearkey.dash"))
-        clearKeySession = session
-
-        dashItemObservation = dash.avPlayer.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
-            guard let asset = player.currentItem?.asset as? AVURLAsset else { return }
-            Task { @MainActor in
-                self?.clearKeySession?.addContentKeyRecipient(asset)
-            }
-        }
 
         engine = .dashClearKey
         dash.play(url: channel.streamURL)
@@ -250,6 +245,8 @@ final class ChannelPlayer: NSObject, ObservableObject {
         dashItemObservation = nil
         clearKeySession = nil
         clearKeyDelegate = nil
+        clearKeySession = nil
+        cencProcessor = nil
         fairPlayLoader = nil
         dashBridge = nil
         dashPlayer?.stop()
