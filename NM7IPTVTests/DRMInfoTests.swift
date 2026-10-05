@@ -15,6 +15,17 @@ final class DRMInfoTests: XCTestCase {
         XCTAssertEqual(info.licenseHeaders["Authorization"], "Bearer abc")
     }
 
+    func testAndroidLegacyDRMMetadataIsRecognized() {
+        let info = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.drm_legacy=org.w3.clearkey|https://license.example/clearkey|Authorization=Bearer%20abc"
+        ])
+
+        XCTAssertEqual(info.system, .clearKey)
+        XCTAssertEqual(info.licenseURL?.absoluteString, "https://license.example/clearkey")
+        XCTAssertEqual(info.licenseHeaders["Authorization"], "Bearer abc")
+        XCTAssertFalse(info.isNativeFairPlay)
+    }
+
     func testAndroidOnlyDRMIsNotMarkedAsNativeFairPlay() {
         XCTAssertEqual(
             DRMInfo.from(options: ["#KODIPROP:inputstream.adaptive.license_type=widevine"]).system,
