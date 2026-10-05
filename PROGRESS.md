@@ -14,7 +14,7 @@
 
 ### Trạng thái build hiện tại
 
-- **Mới nhất sau sửa DRM/player:** commit `88743022709311c19537b57ce3516a4a6ff077bd`.
+- **Commit app-build đã kiểm tra:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`.
 - **GitHub Actions run #153 — SUCCESS toàn bộ**: Simulator, Unit Tests, Device Release, Package IPA và Upload Artifact.
 - **Artifact mới:** `NM7-IPTV-iOS-1.0.69-final-unsigned-IPA`, ID `11335080731`.
 - **Artifact digest:** `sha256:3ea7d2d447aaed7413f10de7afb6a6631f1ae167e7f35082c5b6e2a55c2ef4e6`.
@@ -26,24 +26,8 @@
 - Deployment target: **iOS/iPadOS 16.0+**.
 - Thiết bị mục tiêu: **iPhone + iPad**.
 - Repository đã chuyển sang **Public** để GitHub-hosted macOS runner có thể chạy build.
-- Workflow build cuối cùng đã xác minh: **run #147**, commit **`d00b0f8bd818cbc79eb1d17f7a351eee272d002b`**.
-- Kết quả run #147:
-  - **Simulator build: SUCCESS**
-  - **Unit tests: SUCCESS**
-  - **Device Release build: SUCCESS**
-  - **Package IPA: SUCCESS**
-  - **Upload artifact: SUCCESS**
-- Artifact cuối: **`NM7-IPTV-iOS-1.0.69-final-unsigned-IPA`**.
-- Artifact ID: **`11334156283`**.
-- Artifact digest: **`sha256:1224c6140cc6e061dddce2c03ebe6967d69b66c360a70e9203b42cc285f88df7`**.
-- IPA unsigned đã được kiểm tra sau khi tải về:
-  - SHA256 IPA: **`1fdb08eb4e803cc79148a3269bbd8b2ae65f5062f6b40d0ff75d3832374a4fb8`**.
-  - ZIP integrity: **PASS**.
-  - `Payload/NM7IPTV.app/NM7IPTV`: **PASS**.
-  - `CFBundleShortVersionString = 1.0.69`: **PASS**.
-  - `CFBundleVersion = 69`: **PASS**.
-  - App bundle không còn đóng `project.yml` hoặc `UPlayer.podspec` như resource.
-- Đường tải artifact của GitHub Actions có thời hạn; IPA đầu ra đã được tải về để bàn giao.
+- **Run #15 kiểm tra sau tải IPA:** `CFBundleShortVersionString = 1.0.69`, `CFBundleVersion = 69`, executable `Payload/NM7IPTV.app/NM7IPTV`, `Assets.car` và `nm7_default_background_new.webp` đều PASS.
+- ZIP integrity của IPA: **PASS**.
 - IPA là **unsigned**, cần ký bằng Apple ID/Sideloadly hoặc phương thức phân phối Apple phù hợp trước khi cài thiết bị thật.
 
 ### Những phần đã được chuyển sang nền iOS 1.0.69
@@ -70,7 +54,7 @@
 - Xóa spinner `ProgressView` phủ lên video player để không còn vòng quay cố định khi live stream đang phát/buffer.
 - Đưa 3 nút **microphone / toàn màn hình / yêu thích** vào vùng điều khiển phía trên của **video pane**, không còn phủ lên vùng chọn nhóm kênh.
 - Thêm unit test cho inline ClearKey dạng `KID:KEY`.
-- Run #153 xác nhận toàn bộ source sau các thay đổi biên dịch và đóng gói IPA thành công.
+- Run #15 xác nhận toàn bộ source, unit tests, device build và đóng gói IPA thành công.
 
 ### Nguyên tắc player cho iOS
 
@@ -81,14 +65,12 @@
 - Với HLS tương thích iOS, ưu tiên AVPlayer; lỗi tương thích hoặc stall kéo dài thì dùng VLC fallback.
 - Với HLS tương thích iOS, ưu tiên AVPlayer; lỗi tương thích hoặc stall kéo dài thì dùng VLC fallback.
 
-### Việc đang thực hiện tiếp
+### Việc còn cần xác nhận ngoài CI
 
-1. Kiểm thử thực tế trên iPhone/iPad một kênh DASH/ClearKey có quyền phát để xác nhận end-to-end license/MPD/segment/decryption.
-2. Đối chiếu từng màn hình với Android TV 1.0.69 để đồng bộ bố cục, khoảng cách, font, card kênh, logo và player UI.
-3. Đồng bộ hành vi chuyển kênh, thứ tự nhóm, yêu thích/gần đây và tìm kiếm.
-4. Hoàn thiện player screen cho iPhone/iPad: fullscreen, landscape, điều khiển phát/tạm dừng, chuyển kênh và xử lý nền.
-5. Kiểm thử nguồn HLS thực tế trên iPhone/iPad, ưu tiên VTV/VTVcab/Thể Thao.
-6. Giữ workflow build + unit test + IPA validation xanh trên GitHub Actions.
+1. Cài IPA lên iPhone/iPad thật và chạy một stream DASH/ClearKey CENC có quyền phát để xác nhận end-to-end MPD → segment → KID/KEY → decryption → AVPlayer.
+2. Tiếp tục đối chiếu UI iOS với Android TV 1.0.69 trên thiết bị thật và hoàn thiện các khác biệt nhỏ về bố cục/điều khiển nếu phát hiện trong test thực tế.
+
+**Trạng thái CI:** run #15 đã xanh toàn bộ.
 
 ### Lịch sử nền trước 1.0.69
 
