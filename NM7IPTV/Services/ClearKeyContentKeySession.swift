@@ -106,23 +106,45 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
 
     static func parseJWK(_ data: Data) throws -> [String: Data] {
         let object = try JSONSerialization.jsonObject(with: data)
-        let list: [[String: Any]]
-        if let root = object as? [String: Any], let keys = root["keys"] as? [[String: Any]] {
-            list = keys
-        } else if let single = object as? [String: Any] {
-            list = [single]
-        } else {
-            return [:]
+
+        var items: [[String: Any]] = []
+        if let root = object as? [String: Any] {
+            if let keys = root["keys"] as? [[String: Any]] {
+                items = keys
+            } else if let keyMap = root["keys"] as? [String: Any] {
+                items = keyMap.compactMap { kid, raw in
+                    guard let value = raw as? String else { return nil }
+                    return ["kid": kid, "key": value]
+                }
+            } else if root["kid"] is String && (root["k"] is String || root["key"] is String) {
+                items = [root]
+            } else if let dataObject = root["data"] as? [String: Any] {
+                if let keys = dataObject["keys"] as? [[String: Any]] {
+                    items = keys
+                } else {
+                    items = [dataObject]
+                }
+            }
+        } else if let array = object as? [[String: Any]] {
+            items = array
         }
+
         var result: [String: Data] = [:]
-        for item in list {
-            guard let kid = item["kid"] as? String, let k = item["k"] as? String,
-                  let kidData = decodeKeyID(kid), let keyData = decodeKey(k) else { continue }
+        for item in items {
+            guard let kid = item["kid"] as? String else { continue }
+            let keyString = (item["k"] as? String) ?? (item["key"] as? String)
+            guard let keyString,
+                  let kidData = decodeKeyID(kid),
+                  let keyData = decodeKey(keyString) else { continue }
             result[kidData.base64URLEncodedString] = keyData
+        }
+
+        if result.isEmpty {
+            throw NSError(domain: "NM7ClearKey", code: 5,
+                          userInfo: [NSLocalizedDescriptionKey: "ClearKey JWK không chứa KID/KEY hợp lệ."])
         }
         return result
     }
-
     static func keyID(for request: AVContentKeyRequest, preferred: Data?) -> Data? {
         if let preferred { return preferred }
         if let identifier = request.identifier {
