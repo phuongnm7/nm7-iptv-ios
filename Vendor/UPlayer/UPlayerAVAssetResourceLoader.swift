@@ -194,6 +194,8 @@ extension UPlayerAVAssetResourceLoader {
                     loadingRequest: loadingRequest
                 )
             } catch {
+                let mode = requestMode(url) ?? "unknown"
+                log("\(logScope) CENC \(mode) loading/processing failed: \(error)", loggingLevel: .error)
                 loadingRequest.finishLoading(with: error)
             }
         }
