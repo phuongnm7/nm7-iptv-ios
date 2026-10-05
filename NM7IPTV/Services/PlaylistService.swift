@@ -29,18 +29,24 @@ actor PlaylistService {
     }
 
     func fetch(from source: PlaylistSource) async throws -> LoadedPlaylist {
-        var request = URLRequest(
-            url: source.url,
-            cachePolicy: .reloadIgnoringLocalCacheData,
-            timeoutInterval: 30
-        )
-        request.setValue("NM7-TV-iOS/1.0.70", forHTTPHeaderField: "User-Agent")
-        request.setValue("no-cache, no-store, max-age=0", forHTTPHeaderField: "Cache-Control")
-        request.setValue("application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*", forHTTPHeaderField: "Accept")
+        let data: Data
+        if source.url.isFileURL {
+            data = try Data(contentsOf: source.url)
+        } else {
+            var request = URLRequest(
+                url: source.url,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 30
+            )
+            request.setValue("NM7-TV-iOS/1.0.70", forHTTPHeaderField: "User-Agent")
+            request.setValue("no-cache, no-store, max-age=0", forHTTPHeaderField: "Cache-Control")
+            request.setValue("application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            throw URLError(.badServerResponse)
+            let (responseData, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+            data = responseData
         }
 
         let text = String(data: data, encoding: .utf8)
