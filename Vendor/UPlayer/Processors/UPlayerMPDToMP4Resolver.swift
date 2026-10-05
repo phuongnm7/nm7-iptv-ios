@@ -64,6 +64,15 @@ public final class UPlayerMPDToMP4Resolver: UPlayerAssetProcessorProtocol {
                 return
             }
             
+            // When NM7 attaches a media resource processor, keep the DASH
+            // asset on the generated HLS path. Converting SegmentBase to a
+            // direct MP4 URL would bypass the CENC processor completely.
+            if asset.mediaResourceProcessor != nil {
+                log("\(logScope) keep MPD for media processor/CENC path", loggingLevel: .debug)
+                promise(.success(asset))
+                return
+            }
+
             // Only handle SegmentBase-based MPDs here
             guard manifest.containsSegmentBaseMedia() else {
                 promise(.success(asset))
