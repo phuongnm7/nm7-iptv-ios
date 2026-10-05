@@ -300,9 +300,18 @@ jobs:
           kid = bytes.fromhex("f3d73b3a9b89462ebf7911004ea3b3b9")
           key = bytes.fromhex("2e547a81ff90aa02648cb9e3f79e7339")
           headers = {"User-Agent": UA_FALLBACK}
+          proxy_base = "https://nm7-tv-web.phuongnm7-iptv.workers.dev/api/stream"
 
-          mpd_bytes, _, mpd_url, _ = get(mpd_url, headers)
-          print(f"Real MPD fetched: {mpd_url} bytes={len(mpd_bytes)}")
+          def proxy_url(target):
+              from urllib.parse import quote
+              return proxy_base + "?u=" + quote(target, safe="") + "&ua=" + quote(headers["User-Agent"], safe="")
+
+          # The web application reaches this CDN through the same-origin stream
+          # proxy. Reproduce that transport path in CI before blaming CENC.
+          mpd_proxy = proxy_url(mpd_url)
+          mpd_bytes, _, mpd_final, _ = get(mpd_proxy, {})
+          print(f"Real MPD fetched through NM7 proxy: {mpd_final} bytes={len(mpd_bytes)}")
+          mpd_url = mpd_proxy
           root = ET.fromstring(mpd_bytes)
 
           periods = children(root, "Period")
@@ -369,8 +378,10 @@ jobs:
           init_url = urljoin(base_url, init_ref)
           media_url = urljoin(base_url, media_ref)
 
-          init, _, init_final, _ = get(init_url, headers)
-          media, _, media_final, _ = get(media_url, headers)
+          init_proxy = proxy_url(init_url)
+          media_proxy = proxy_url(media_url)
+          init, _, init_final, _ = get(init_proxy, {})
+          media, _, media_final, _ = get(media_proxy, {})
 
           print(
               f"Observed real stream: init={init_final} bytes={len(init)} "
