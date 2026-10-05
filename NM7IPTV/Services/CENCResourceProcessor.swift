@@ -43,7 +43,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let pairs = ClearKeyContentKeySession.parsePairs(drm.licenseValue)
         for (kidString, key) in pairs {
             if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
-                keys[kid.base64EncodedString()] = key
+                keys[base64URL(kid)] = key
             }
         }
         if pairs.isEmpty, let data = drm.licenseValue.data(using: .utf8),
@@ -73,7 +73,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             for trex in childBoxes(data, parent: mvex).filter({ $0.type == "trex" }) {
                 guard trex.contentStart + 16 <= trex.end else { continue }
                 let trackID = readUInt32(data, trex.contentStart + 4)
-                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 12))
+                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 16))
                 trexDefaultSizes[trackID] = defaultSampleSize
             }
         }
@@ -223,11 +223,11 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                     sampleCount: sampleSizes.count
                 )
             } else {
-                throw error("CENC fragment thiếu senc hoặc saiz/saio cho track (trackID).")
+                throw error("CENC fragment thiếu senc hoặc saiz/saio cho track \(trackID).")
             }
 
             guard entries.count == sampleSizes.count else {
-                throw error("CENC encryption/sample count không khớp (enc=(entries.count), trun=(sampleSizes.count)).")
+                throw error("CENC encryption/sample count không khớp (enc=\(entries.count), trun=\(sampleSizes.count)).")
             }
 
             var sampleOffset = dataOffset
