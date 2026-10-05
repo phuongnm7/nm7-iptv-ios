@@ -163,7 +163,7 @@ struct HomeView: View {
         verticalProxy: ScrollViewProxy
     ) -> some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(displayedGroups.indices, id: .self) { rowIndex in
+            ForEach(displayedGroups.indices, id: \.self) { rowIndex in
                 let group = displayedGroups[rowIndex]
                 channelRow(
                     group: group,
