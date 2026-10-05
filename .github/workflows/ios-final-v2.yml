@@ -32,8 +32,9 @@ jobs:
         timeout-minutes: 8
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check -q cryptography
-          python3 - <<'PY'
+          python3 -m venv .venv-smoke
+          .venv-smoke/bin/python -m pip install --disable-pip-version-check -q cryptography
+          .venv-smoke/bin/python - <<'PY'
           import base64
           import json
           import re
