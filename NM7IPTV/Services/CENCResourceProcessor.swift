@@ -108,9 +108,12 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         var trexDefaultSizes: [UInt32: Int] = [:]
         if let mvex = childBoxes(data, parent: moov).first(where: { $0.type == "mvex" }) {
             for trex in childBoxes(data, parent: mvex).filter({ $0.type == "trex" }) {
-                guard trex.contentStart + 16 <= trex.end else { continue }
+                // trex FullBox payload:
+                // track_ID, default_sample_description_index,
+                // default_sample_duration, default_sample_size, default_sample_flags.
+                guard trex.contentStart + 20 <= trex.end else { continue }
                 let trackID = readUInt32(data, trex.contentStart + 4)
-                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 12))
+                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 16))
                 trexDefaultSizes[trackID] = defaultSampleSize
             }
         }
