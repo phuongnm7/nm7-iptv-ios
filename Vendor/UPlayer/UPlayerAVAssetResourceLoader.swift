@@ -17,6 +17,13 @@ public protocol UPlayerAVAssetResourceLoaderDelegate: AnyObject {
 
 public protocol UPlayerMediaResourceProcessor: AnyObject {
     func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data
+    func processMediaData(_ data: Data, sourceURL: URL, sourceOffset: Int64) async throws -> Data
+}
+
+public extension UPlayerMediaResourceProcessor {
+    func processMediaData(_ data: Data, sourceURL: URL, sourceOffset: Int64) async throws -> Data {
+        try await processMediaData(data, sourceURL: sourceURL)
+    }
 }
 
 public protocol UPlayerAVAssetResourceLoaderTranscodingDelegate: AnyObject {
@@ -143,18 +150,201 @@ extension UPlayerAVAssetResourceLoader {
                 guard let realURL = originalHTTPURL(from: url) else {
                     throw UPlayerError.assetLoadingFailed
                 }
-                let data = try await download(url: realURL)
-                let processed = try await mediaResourceProcessor?.processMediaData(data, sourceURL: realURL) ?? data
+
+                let start = max(
+                    Int64(0),
+                    loadingRequest.dataRequest?.requestedOffset ?? 0,
+                    loadingRequest.dataRequest?.currentOffset ?? 0
+                )
+                let requestedLength = Int64(
+                    loadingRequest.dataRequest?.requestedLength ?? 0
+                )
+
+                // HLS EXT-X-MAP / EXT-X-BYTERANGE requests carry the physical
+                // MP4 byte range in AVAssetResourceLoadingDataRequest. Download
+                // only that range instead of the entire media resource.
+                let range: ClosedRange<Int64>? = {
+                    guard requestedLength > 0,
+                          start <= Int64.max - requestedLength else {
+                        return nil
+                    }
+                    let end = start + requestedLength - 1
+                    return end >= start ? start...end : nil
+                }()
+
+                let fetched = try await downloadRange(url: realURL, range: range)
+                guard !fetched.data.isEmpty else { throw UPlayerError.emptyDownload }
+
+                // The CENC processor needs the absolute position of this slice
+                // when tfhd/trun/saio contain file-relative offsets.
+                let processed = try await mediaResourceProcessor?.processMediaData(
+                    fetched.data,
+                    sourceURL: realURL,
+                    sourceOffset: fetched.startOffset
+                ) ?? fetched.data
+
                 guard !processed.isEmpty else { throw UPlayerError.emptyDownload }
-                respond(data: processed,
-                        uti: UTType(filenameExtension: "mp4")?.identifier ?? "public.mpeg-4",
-                        mimeType: "video/mp4",
-                        byteRangeSupported: true,
-                        loadingRequest: loadingRequest)
+
+                respondRange(
+                    data: processed,
+                    rangeStart: fetched.startOffset,
+                    totalLength: fetched.totalLength,
+                    uti: UTType(filenameExtension: "mp4")?.identifier ?? "public.mpeg-4",
+                    mimeType: "video/mp4",
+                    loadingRequest: loadingRequest
+                )
             } catch {
                 loadingRequest.finishLoading(with: error)
             }
         }
+    }
+}
+
+private extension UPlayerAVAssetResourceLoader {
+    struct RangeDownload {
+        let data: Data
+        let startOffset: Int64
+        let totalLength: Int64?
+    }
+
+    func downloadRange(url: URL, range: ClosedRange<Int64>?) async throws -> RangeDownload {
+        var request = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 30
+        )
+
+        for (field, value) in mediaRequestHeader ?? [:] {
+            request.setValue(String(describing: value), forHTTPHeaderField: field)
+        }
+
+        if let range {
+            request.setValue(
+                "bytes=\\(range.lowerBound)-\\(range.upperBound)",
+                forHTTPHeaderField: "Range"
+            )
+        }
+
+        let (rawData, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UPlayerError.invalidHTTPResponse(-1)
+        }
+
+        guard (200...299).contains(http.statusCode) else {
+            throw UPlayerError.invalidHTTPResponse(http.statusCode)
+        }
+
+        let contentRange = http.value(forHTTPHeaderField: "Content-Range")
+        let parsed = parseContentRange(contentRange)
+
+        if http.statusCode == 206, let range {
+            let actualStart = parsed?.start ?? range.lowerBound
+            let expectedCount = Int64(range.upperBound - range.lowerBound + 1)
+
+            let skip = max(Int64(0), range.lowerBound - actualStart)
+            let available = Int64(rawData.count)
+            let count = min(expectedCount, max(Int64(0), available - skip))
+
+            guard skip >= 0,
+                  count > 0,
+                  skip <= available else {
+                throw UPlayerError.emptyDownload
+            }
+
+            let data = rawData.subdata(
+                in: Int(skip)..<Int(skip + count)
+            )
+            return RangeDownload(
+                data: data,
+                startOffset: range.lowerBound,
+                totalLength: parsed?.total
+            )
+        }
+
+        // Some CDNs ignore Range and return the whole MP4 with HTTP 200.
+        // Slice it locally so the CENC offsets remain relative to the requested
+        // physical range.
+        if let range {
+            let total = parsed?.total
+                ?? Int64(http.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init) ?? Int64(rawData.count))
+            let start = max(Int64(0), range.lowerBound)
+            guard start < Int64(rawData.count) else {
+                throw UPlayerError.emptyDownload
+            }
+
+            let maxCount = Int64(rawData.count) - start
+            let requested = range.upperBound - range.lowerBound + 1
+            let count = min(requested, maxCount)
+            guard count > 0 else { throw UPlayerError.emptyDownload }
+
+            return RangeDownload(
+                data: rawData.subdata(in: Int(start)..<Int(start + count)),
+                startOffset: range.lowerBound,
+                totalLength: total
+            )
+        }
+
+        let total = parsed?.total
+            ?? Int64(http.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init) ?? Int64(rawData.count))
+        return RangeDownload(data: rawData, startOffset: 0, totalLength: total)
+    }
+
+    func parseContentRange(_ value: String?) -> (start: Int64, end: Int64, total: Int64?)? {
+        guard let value else { return nil }
+        let parts = value.split(separator: " ", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+
+        let rangeAndTotal = parts[1].split(separator: "/", maxSplits: 1).map(String.init)
+        guard let bounds = rangeAndTotal.first?.split(separator: "-", maxSplits: 1),
+              bounds.count == 2,
+              let start = Int64(bounds[0]),
+              let end = Int64(bounds[1]) else {
+            return nil
+        }
+
+        let total: Int64?
+        if let totalPart = rangeAndTotal.dropFirst().first,
+           totalPart != "*" {
+            total = Int64(totalPart)
+        } else {
+            total = nil
+        }
+
+        return (start, end, total)
+    }
+
+    func respondRange(
+        data: Data,
+        rangeStart: Int64,
+        totalLength: Int64?,
+        uti: String,
+        mimeType: String,
+        loadingRequest: AVAssetResourceLoadingRequest
+    ) {
+        let contentLength = totalLength ?? (rangeStart + Int64(data.count))
+
+        if let info = loadingRequest.contentInformationRequest {
+            info.contentType = uti
+            info.contentLength = contentLength
+            info.isByteRangeAccessSupported = true
+        }
+
+        if let requestURL = loadingRequest.request.url {
+            loadingRequest.response = HTTPURLResponse(
+                url: requestURL,
+                statusCode: 206,
+                httpVersion: "HTTP/1.1",
+                headerFields: [
+                    "Content-Type": mimeType,
+                    "Content-Length": "\(data.count)",
+                    "Content-Range": "bytes \(rangeStart)-\(rangeStart + Int64(data.count) - 1)/\(contentLength)",
+                    "Accept-Ranges": "bytes"
+                ]
+            )
+        }
+
+        loadingRequest.dataRequest?.respond(with: data)
+        loadingRequest.finishLoading()
     }
 }
 
