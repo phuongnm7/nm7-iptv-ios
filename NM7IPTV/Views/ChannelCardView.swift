@@ -3,14 +3,16 @@ import UIKit
 
 struct ChannelCardView: View {
     let channel: Channel
-    @FocusState.Binding var isFocusedChannelID: String?
+    @FocusState.Binding var focusedChannelID: String?
     let isFavorite: Bool
     let isPlaying: Bool
     let metrics: NM7Theme.Metrics
     let onPlay: () -> Void
     let onFavorite: () -> Void
 
-    private var isFocused: Bool { isFocusedChannelID == channel.id }
+    private var isFocused: Bool {
+        focusedChannelID == channel.id
+    }
 
     var body: some View {
         Button(action: onPlay) {
@@ -27,12 +29,18 @@ struct ChannelCardView: View {
                     if isFocused || isPlaying {
                         Circle()
                             .stroke(
-                                isFocused ? NM7Theme.accent : NM7Theme.accent.opacity(0.85),
+                                isFocused
+                                    ? NM7Theme.accent
+                                    : NM7Theme.accent.opacity(0.85),
                                 lineWidth: isFocused ? 4 : 2
                             )
                             .frame(
-                                width: isFocused ? metrics.logoDiameter + 12 : metrics.logoDiameter + 4,
-                                height: isFocused ? metrics.logoDiameter + 12 : metrics.logoDiameter + 4
+                                width: isFocused
+                                    ? metrics.logoDiameter + 12
+                                    : metrics.logoDiameter + 4,
+                                height: isFocused
+                                    ? metrics.logoDiameter + 12
+                                    : metrics.logoDiameter + 4
                             )
                     }
                 }
@@ -40,7 +48,12 @@ struct ChannelCardView: View {
                 .frame(height: metrics.cardHeight - 18)
 
                 Text(channel.name)
-                    .font(.system(size: 11, weight: isFocused ? .bold : .regular))
+                    .font(
+                        .system(
+                            size: 11,
+                            weight: isFocused ? .bold : .regular
+                        )
+                    )
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -51,7 +64,11 @@ struct ChannelCardView: View {
             .contentShape(RoundedRectangle(cornerRadius: 22))
             .background(
                 RoundedRectangle(cornerRadius: 22)
-                    .fill(isFocused ? NM7Theme.accent.opacity(0.12) : .clear)
+                    .fill(
+                        isFocused
+                            ? NM7Theme.accent.opacity(0.12)
+                            : .clear
+                    )
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 22)
@@ -63,8 +80,6 @@ struct ChannelCardView: View {
         }
         .buttonStyle(.plain)
         .focused($focusedChannelID, equals: channel.id)
-        .isFocused($isFocusedChannelID, equals: channel.id)
-        .isFocused($isFocused)
         .scaleEffect(isFocused ? 1.06 : 1)
         .animation(.easeOut(duration: 0.12), value: isFocused)
         .contextMenu {
@@ -76,7 +91,9 @@ struct ChannelCardView: View {
             }
         }
         .onLongPressGesture(minimumDuration: 0.45) {
-            if !NM7DeviceProfile.isPad { onFavorite() }
+            if !NM7DeviceProfile.isPad {
+                onFavorite()
+            }
         }
         .accessibilityLabel(channel.name)
         .accessibilityHint(isPlaying ? "Đang phát" : "Mở kênh")
@@ -101,9 +118,18 @@ private struct ChannelLogoView: View {
                         height: max(10, diameter - 2)
                     )
             } else {
-                Image(systemName: failed ? "tv.fill" : "dot.radiowaves.left.and.right")
-                    .font(.system(size: diameter * 0.42, weight: .bold))
-                    .foregroundStyle(NM7Theme.accent.opacity(0.88))
+                Image(
+                    systemName: failed
+                        ? "tv.fill"
+                        : "dot.radiowaves.left.and.right"
+                )
+                .font(
+                    .system(
+                        size: diameter * 0.42,
+                        weight: .bold
+                    )
+                )
+                .foregroundStyle(NM7Theme.accent.opacity(0.88))
             }
         }
         .frame(width: diameter, height: diameter)
