@@ -44,6 +44,18 @@ final class ChannelPlayer: NSObject, ObservableObject {
         vlcPlayer.drawable = view
     }
 
+    var isPlaying: Bool {
+        engine == .avPlayer ? player.timeControlStatus == .playing : vlcPlayer.isPlaying
+    }
+
+    func togglePlayPause() {
+        if engine == .avPlayer {
+            if player.timeControlStatus == .playing { player.pause() } else { player.play() }
+        } else {
+            if vlcPlayer.isPlaying { vlcPlayer.pause() } else { vlcPlayer.play() }
+        }
+    }
+
     func play(_ channel: Channel) {
         stopPlayback()
         currentChannel = channel
