@@ -692,7 +692,13 @@ extension UPlayer: UPlayerAssetProcessorsQueueDelegate {
         guard let hls = asset.hlsMetadata else { return }
 
         func wrap(_ raw: String, mode: String) -> String {
-            guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return raw }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = trimmed.replacingOccurrences(
+                of: #"(?:%22|%27|\\\"|\')+$"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            guard let url = URL(string: normalized) else { return raw }
             guard url.scheme != "uplayer" else { return raw }
             var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             components?.scheme = "uplayer"
