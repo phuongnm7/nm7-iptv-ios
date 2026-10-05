@@ -245,7 +245,6 @@ final class ChannelPlayer: NSObject, ObservableObject {
         dashItemObservation = nil
         clearKeySession = nil
         clearKeyDelegate = nil
-        clearKeySession = nil
         cencProcessor = nil
         fairPlayLoader = nil
         dashBridge = nil
