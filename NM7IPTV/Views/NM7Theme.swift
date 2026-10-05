@@ -16,30 +16,41 @@ enum NM7Theme {
         let logoDiameter: CGFloat
         let rowHeight: CGFloat
         let groupHeaderHeight: CGFloat
+        let groupHeaderFontSize: CGFloat
+        let cardSpacing: CGFloat
         let contentLeading: CGFloat
         let contentTrailing: CGFloat
+        let topPadding: CGFloat
 
-        static func resolve(width: CGFloat, isPad: Bool) -> Metrics {
+        static func resolve(width: CGFloat, isPad: Bool, height: CGFloat) -> Metrics {
             if isPad {
+                let compact = min(width, height) < 700
                 return .init(
-                    cardWidth: 138,
-                    cardHeight: 76,
-                    logoDiameter: 54,
-                    rowHeight: 80,
-                    groupHeaderHeight: 34,
-                    contentLeading: 22,
-                    contentTrailing: 18
+                    cardWidth: compact ? 126 : 138,
+                    cardHeight: compact ? 72 : 76,
+                    logoDiameter: compact ? 50 : 54,
+                    rowHeight: compact ? 76 : 80,
+                    groupHeaderHeight: compact ? 32 : 34,
+                    groupHeaderFontSize: compact ? 17 : 18,
+                    cardSpacing: 4,
+                    contentLeading: compact ? 14 : 22,
+                    contentTrailing: 18,
+                    topPadding: 2
                 )
             }
 
+            let compact = width < 390
             return .init(
-                cardWidth: 138,
-                cardHeight: 76,
-                logoDiameter: 54,
-                rowHeight: 80,
-                groupHeaderHeight: 34,
-                contentLeading: 14,
-                contentTrailing: 14
+                cardWidth: compact ? 104 : min(126, width * 0.30),
+                cardHeight: 70,
+                logoDiameter: compact ? 46 : 50,
+                rowHeight: 74,
+                groupHeaderHeight: 32,
+                groupHeaderFontSize: 17,
+                cardSpacing: 4,
+                contentLeading: 10,
+                contentTrailing: 10,
+                topPadding: 2
             )
         }
     }
