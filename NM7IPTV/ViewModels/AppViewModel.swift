@@ -32,11 +32,32 @@ final class AppViewModel: ObservableObject {
 
     var groups: [String] {
         var seen = Set<String>()
-        return channels.compactMap {
-            let group = $0.group
+        let discovered = channels.compactMap { channel -> (String, Int)? in
+            let group = channel.group
             guard seen.insert(group).inserted else { return nil }
-            return group
+            return (group, channels.firstIndex(where: { $0.group == group }) ?? Int.max)
         }
+
+        func priority(_ group: String) -> Int {
+            let value = group.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if value == "vtv" { return 0 }
+            if value == "vtvcab" { return 1 }
+            if value == "thể thao" || value == "the thao" { return 2 }
+            if value == "sctv" { return 3 }
+            if value == "sự kiện fpt play" || value == "sự kiện fpt" { return 4 }
+            if value == "vtv dự phòng" { return 5 }
+            if value == "giờ vàng tv" { return 6 }
+            if value.contains("gà vàng 33") || value.contains("ga vang 33") { return 7 }
+            return 100
+        }
+
+        return discovered
+            .sorted {
+                let p0 = priority($0.0)
+                let p1 = priority($1.0)
+                return p0 == p1 ? $0.1 < $1.1 : p0 < p1
+            }
+            .map(\.0)
     }
 
     var visibleChannels: [Channel] {
