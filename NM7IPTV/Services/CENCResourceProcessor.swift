@@ -1013,3 +1013,4 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         NSError(domain: "NM7CENC", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
     }
 }
+}
