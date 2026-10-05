@@ -42,7 +42,7 @@ actor ChannelLogoStore {
 
             var request = URLRequest(url: url, timeoutInterval: 8)
             request.setValue(
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1 NM7-TV-iOS/1.0.69",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1 NM7-TV-iOS/1.0.70",
                 forHTTPHeaderField: "User-Agent"
             )
             request.setValue(
