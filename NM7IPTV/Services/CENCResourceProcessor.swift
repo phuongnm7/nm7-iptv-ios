@@ -40,13 +40,17 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         super.init()
 
         let pairs = ClearKeyContentKeySession.parsePairs(drm.licenseValue)
-        for (kid, key) in pairs {
-            keys[kid] = key
+        for (kidString, key) in pairs {
+            if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
+                keys[kid.base64EncodedString()] = key
+            }
         }
         if pairs.isEmpty, let data = drm.licenseValue.data(using: .utf8),
            let jwk = try? ClearKeyContentKeySession.parseJWK(data) {
-            for (kid, key) in jwk {
-                keys[kid] = key
+            for (kidString, key) in jwk {
+                if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
+                    keys[kid.base64EncodedString()] = key
+                }
             }
         }
     }
@@ -393,18 +397,25 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     }
 
     private func rewriteProtectedSampleEntries(_ data: inout Data) {
-        let protectedTypes = ["encv", "enca"]
-        var cursor = 0
-        while let box = boxAt(data, cursor: cursor, limit: data.count) {
-            if protectedTypes.contains(box.type) {
-                let newType = clearSampleEntryType(data, box)
-                let bytes = Array(newType.utf8)
-                if bytes.count == 4 {
-                    data.replaceSubrange((box.offset + 4)..<(box.offset + 8), with: bytes)
-                }
+        let protectedTypes: Set<String> = ["encv", "enca"]
+        guard data.count >= 12 else { return }
+
+        for index in 4..<(data.count - 3) {
+            let start = index - 4
+            let type = String(
+                data: data.subdata(in: index..<(index + 4)),
+                encoding: .ascii
+            ) ?? ""
+            guard protectedTypes.contains(type),
+                  let box = boxAt(data, cursor: start, limit: data.count) else {
+                continue
             }
-            cursor = box.end
-            if cursor >= data.count { break }
+
+            let newType = clearSampleEntryType(data, box)
+            let bytes = Array(newType.utf8)
+            if bytes.count == 4 {
+                data.replaceSubrange((box.offset + 4)..<(box.offset + 8), with: bytes)
+            }
         }
     }
 
