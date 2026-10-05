@@ -57,7 +57,7 @@ final class DRMInfoTests: XCTestCase {
         )
 
         let kid = Data([0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff])
-        XCTAssertEqual(pairs[ClearKeyContentKeySession.base64URL(kid)]?.count, 16)
+        XCTAssertEqual(pairs[kid.base64URLEncodedString]?.count, 16)
     }
 
 }
