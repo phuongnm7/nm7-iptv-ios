@@ -576,6 +576,9 @@ public class UPlayer: UPlayerProtocol {
                 }
             } catch {
                 log("\(logScope) failed, \(error)", loggingLevel: .error)
+                DispatchQueue.main.async {
+                    self.delegate?.didEventPlayerStop(source: self, error: error)
+                }
             }
         }
     }
@@ -646,6 +649,13 @@ extension UPlayer: UPlayerAssetProcessorsQueueDelegate {
     }
     
     public func didFinishProcessing(source: any UPlayerAssetProcessorsQueueProtocol, sessionId: UPlayerAssetProcessingID, error: (any Error)?) {
+        guard let error else { return }
+
+        // Never leave DASH/CENC playback in a silent loading state when
+        // metadata parsing, HLS generation, or another processor fails.
+        DispatchQueue.main.async {
+            self.delegate?.didEventPlayerStop(source: self, error: error)
+        }
     }
     
     public func didFinishProcessing(source: any UPlayerAssetProcessorsQueueProtocol, sessionId: UPlayerAssetProcessingID, asset: any UPlayerAssetProtocol) {
