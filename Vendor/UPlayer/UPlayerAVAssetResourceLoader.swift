@@ -107,7 +107,9 @@ extension UPlayerAVAssetResourceLoader {
             return nil
         }
         
-        let value = "https://" + original[schemeRange.upperBound...]
+        let scheme = String(original[..<schemeRange.lowerBound]).lowercased()
+        let transport = (scheme == "http") ? "http://" : "https://"
+        let value = transport + original[schemeRange.upperBound...]
         guard let questionMark = value.firstIndex(of: "?") else {
             return URL(string: value)
         }
