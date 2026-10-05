@@ -74,15 +74,32 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                   tenc.end <= data.count,
                   tenc.offset + 31 <= data.count else { continue }
 
-            let ivSize = Int(data[tenc.offset + 14])
-            let kid = data.subdata(in: (tenc.offset + 15)..<(tenc.offset + 31))
+            // tenc is a FullBox. The field layout is version-dependent:
+            // v0: reserved(1), reserved(1), isProtected(1), IVSize(1), KID(16)
+            // v1+: reserved(1), crypt/skip(1), isProtected(1), IVSize(1), KID(16)
+            // Both layouts therefore place IVSize at boxOffset + 13 and KID at +14.
+            let version = Int(data[tenc.offset + 8])
+            let ivSizeOffset = tenc.offset + 13
+            let kidOffset = tenc.offset + 14
+            guard kidOffset + 16 <= tenc.end else { continue }
+            let ivSize = Int(data[ivSizeOffset])
+            let kid = data.subdata(in: kidOffset..<(kidOffset + 16))
+
             var constantIV: Data?
-            if ivSize == 0, tenc.offset + 32 <= tenc.end {
-                let size = Int(data[tenc.offset + 31])
-                if size > 0, tenc.offset + 32 + size <= tenc.end {
-                    constantIV = data.subdata(in: (tenc.offset + 32)..<(tenc.offset + 32 + size))
+            if ivSize == 0 {
+                let constantSizeOffset = kidOffset + 16
+                if constantSizeOffset < tenc.end {
+                    let size = Int(data[constantSizeOffset])
+                    let constantOffset = constantSizeOffset + 1
+                    if size > 0, constantOffset + size <= tenc.end {
+                        constantIV = data.subdata(in: constantOffset..<(constantOffset + size))
+                    }
                 }
             }
+
+            // Keep this explicit so malformed/unsupported tenc versions don't
+            // silently masquerade as a valid track configuration.
+            guard version == 0 || version >= 1 else { continue }
             tracks[trackID] = TrackInfo(kid: kid, ivSize: ivSize, constantIV: constantIV)
         }
     }
@@ -138,7 +155,9 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 ivSize: info?.ivSize ?? 16,
                 constantIV: info?.constantIV
             )
-            let count = min(entries.count, sampleSizes.count)
+            guard entries.count == sampleSizes.count else {
+                throw error("CENC senc/trun sample count không khớp (senc=\(entries.count), trun=\(sampleSizes.count)).")
+            }
             var sampleOffset = dataOffset
 
             for index in 0..<count {
