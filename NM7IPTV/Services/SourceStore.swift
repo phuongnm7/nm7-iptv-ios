@@ -56,13 +56,41 @@ final class SourceStore: ObservableObject {
         persist()
     }
 
+    func importPlaylistFile(from sourceURL: URL) throws -> PlaylistSource {
+        let fileExtension = sourceURL.pathExtension.lowercased()
+        guard ["m3u", "m3u8"].contains(fileExtension) else { throw SourceError.invalidFile }
+
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ImportedPlaylists", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let copiedURL = directory.appendingPathComponent("\(UUID().uuidString).\(fileExtension)")
+        try FileManager.default.copyItem(at: sourceURL, to: copiedURL)
+
+        let source = PlaylistSource(
+            id: UUID().uuidString,
+            name: sourceURL.deletingPathExtension().lastPathComponent.isEmpty
+                ? "Playlist trên thiết bị"
+                : sourceURL.deletingPathExtension().lastPathComponent,
+            url: copiedURL,
+            isBuiltIn: false
+        )
+        customSources.insert(source, at: 0)
+        persist()
+        return source
+    }
+
     func select(_ source: PlaylistSource) {
         activeSourceID = source.id
         persist()
     }
 
     func remove(at offsets: IndexSet) {
+        let removed = offsets.map { customSources[$0] }
         customSources.remove(atOffsets: offsets)
+        for source in removed where source.url.isFileURL {
+            try? FileManager.default.removeItem(at: source.url)
+        }
         if !allSources.contains(where: { $0.id == activeSourceID }) {
             activeSourceID = Self.defaultID
         }
@@ -77,9 +105,13 @@ final class SourceStore: ObservableObject {
     }
 
     enum SourceError: LocalizedError {
-        case invalidURL, duplicate
+        case invalidURL, duplicate, invalidFile
         var errorDescription: String? {
-            self == .invalidURL ? "URL nguồn không hợp lệ." : "Nguồn này đã tồn tại."
+            switch self {
+            case .invalidURL: "URL nguồn không hợp lệ."
+            case .duplicate: "Nguồn này đã tồn tại."
+            case .invalidFile: "Chỉ hỗ trợ tệp playlist .m3u hoặc .m3u8."
+            }
         }
     }
 }
