@@ -29,7 +29,47 @@ struct DRMInfo: Equatable {
             let value = String(line[line.index(after: separator)...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if key.contains("license_type") {
+            if key.contains("drm_legacy") {
+                let parts = value.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+                if let type = parts.first?.lowercased() {
+                    if type.contains("widevine") || type == "com.widevine.alpha" {
+                        system = .widevine
+                    } else if type.contains("playready") || type == "com.microsoft.playready" {
+                        system = .playReady
+                    } else if type.contains("clearkey") || type == "org.w3.clearkey" {
+                        system = .clearKey
+                    } else if type.contains("fairplay") || type.contains("streamingkeydelivery") || type.contains("skd") {
+                        system = .fairPlay
+                    } else if !type.isEmpty && type != "none" {
+                        system = .unknown
+                    }
+                }
+                if parts.count > 1 {
+                    let licenseParts = parts[1].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    license = licenseParts.first ?? ""
+                    if licenseParts.count > 1 {
+                        for field in licenseParts.dropFirst().flatMap({ $0.split(separator: "&") }) {
+                            let pair = field.split(separator: "=", maxSplits: 1).map(String.init)
+                            guard pair.count == 2 else { continue }
+                            headers[pair[0]] = pair[1].removingPercentEncoding ?? pair[1]
+                        }
+                    }
+                    if let pipe = license.firstIndex(of: "|") {
+                        license = String(license[..<pipe])
+                    }
+                    if license.hasPrefix("http://") || license.hasPrefix("https://") {
+                        let fields = license.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                        license = fields.first ?? license
+                        if fields.count > 1 {
+                            for field in fields.dropFirst().flatMap({ $0.split(separator: "&") }) {
+                                let pair = field.split(separator: "=", maxSplits: 1).map(String.init)
+                                guard pair.count == 2 else { continue }
+                                headers[pair[0]] = pair[1].removingPercentEncoding ?? pair[1]
+                            }
+                        }
+                    }
+                }
+            } else if key.contains("license_type") {
                 let lower = value.lowercased()
                 if lower.contains("fairplay") || lower.contains("streamingkeydelivery") ||
                     lower.contains("com.apple") || lower.contains("skd") {
