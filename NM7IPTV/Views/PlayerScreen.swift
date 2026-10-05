@@ -74,7 +74,7 @@ struct PlayerScreen: View {
 
     private var videoPane: some View {
         ZStack {
-            VideoPlayer(player: channelPlayer.player)
+            VideoPlayer(player: channelPlayer.activeAVPlayer)
                 .opacity(channelPlayer.engine == .avPlayer ? 1 : 0)
                 .allowsHitTesting(channelPlayer.engine == .avPlayer)
 
@@ -93,7 +93,7 @@ struct PlayerScreen: View {
                     playerButton("backward.end.fill") { changeChannel(by: -1) }
                     Spacer()
                     playerButton(
-                        channelPlayer.engine == .avPlayer && channelPlayer.player.timeControlStatus == .playing ? "pause.fill" : "play.fill"
+                        channelPlayer.engine != .vlc && channelPlayer.activeAVPlayer.timeControlStatus == .playing ? "pause.fill" : "play.fill"
                     ) {
                         channelPlayer.togglePlayPause()
                     }
