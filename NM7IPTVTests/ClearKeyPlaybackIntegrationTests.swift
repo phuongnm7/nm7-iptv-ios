@@ -36,6 +36,32 @@ final class ClearKeyPlaybackIntegrationTests: XCTestCase {
             }
             XCTAssertTrue(channel.isDASH, "\(name) must route through the DASH/ClearKey engine.")
             XCTAssertEqual(DRMInfo.from(options: channel.options).system, .clearKey)
+
+            var manifestRequest = URLRequest(url: channel.streamURL)
+            manifestRequest.timeoutInterval = 15
+            manifestRequest.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+            channel.httpHeaders.forEach {
+                manifestRequest.setValue($0.value, forHTTPHeaderField: $0.key)
+            }
+            do {
+                let (manifestData, manifestResponse) = try await URLSession.shared.data(for: manifestRequest)
+                guard let http = manifestResponse as? HTTPURLResponse else {
+                    XCTFail("\(name) returned a non-HTTP manifest response (\(String(describing: manifestResponse.mimeType))).")
+                    continue
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    XCTFail("\(name) manifest request returned HTTP \(http.statusCode), MIME \(http.mimeType ?? "unknown").")
+                    continue
+                }
+                let prefix = String(decoding: manifestData.prefix(512), as: UTF8.self)
+                XCTAssertTrue(
+                    prefix.contains("<MPD") || (http.mimeType?.localizedCaseInsensitiveContains("dash") ?? false),
+                    "\(name) manifest response is not DASH XML (MIME \(http.mimeType ?? "unknown"))."
+                )
+            } catch {
+                XCTFail("\(name) manifest request failed before HTTP response: \(error.localizedDescription)")
+                continue
+            }
             try await assertPlayback(channel)
         }
     }
