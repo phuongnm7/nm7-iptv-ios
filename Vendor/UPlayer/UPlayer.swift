@@ -258,6 +258,7 @@ public class UPlayer: UPlayerProtocol {
     // MARK: Fields
     
     private let manageAudioSession: Bool
+    public weak var mediaResourceProcessor: UPlayerMediaResourceProcessor?
     public var requestHeaders: [String: String] = [:]
     private let observer = AVPlayerObserver()
     private lazy var playerInstance: AVPlayer = {
@@ -406,6 +407,7 @@ public class UPlayer: UPlayerProtocol {
             log("\(logScope) start from persistent cache", loggingLevel: .debug)
 
             asset.httpHeaders = requestHeaders
+            asset.mediaResourceProcessor = mediaResourceProcessor
             startPlayback(asset: asset)
             startPullingLiveMpd(asset: asset)
             return
@@ -427,6 +429,7 @@ public class UPlayer: UPlayerProtocol {
 
         let asset = UPlayerAsset(url: url)
         asset.httpHeaders = requestHeaders
+        asset.mediaResourceProcessor = mediaResourceProcessor
         assetProcessorsQueue.start(asset: asset)
     }
     
