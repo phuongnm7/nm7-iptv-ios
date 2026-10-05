@@ -132,6 +132,7 @@ private let logScope = "[mpd downloading]"
             }
 
             var request = URLRequest(url: asset.url)
+            asset.httpHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
             request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
             
             let task = session.dataTask(with: request) { data, response, error in
@@ -229,7 +230,9 @@ private let logScope = "[mpd downloading]"
             
 
             log("\(logScope) download data for url, \(asset.url)", loggingLevel: .debug)
-            let task = session.dataTask(with: asset.url) { data, response, error in
+            var request = URLRequest(url: asset.url)
+            asset.httpHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+            let task = session.dataTask(with: request) { data, response, error in
                 
                 if self.isTaskCanceled.value {
                     let error = UPlayerError.operationCanceled
