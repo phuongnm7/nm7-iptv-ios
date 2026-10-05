@@ -22,22 +22,22 @@ enum NM7Theme {
         static func resolve(width: CGFloat, isPad: Bool) -> Metrics {
             if isPad {
                 return .init(
-                    cardWidth: 128,
-                    cardHeight: 70,
-                    logoDiameter: 48,
-                    rowHeight: 90,
+                    cardWidth: 138,
+                    cardHeight: 76,
+                    logoDiameter: 54,
+                    rowHeight: 80,
                     groupHeaderHeight: 34,
                     contentLeading: 22,
                     contentTrailing: 18
                 )
             }
-            let compact = width < 390
+
             return .init(
-                cardWidth: compact ? 104 : 112,
-                cardHeight: compact ? 64 : 68,
-                logoDiameter: compact ? 42 : 46,
-                rowHeight: compact ? 82 : 86,
-                groupHeaderHeight: 32,
+                cardWidth: 138,
+                cardHeight: 76,
+                logoDiameter: 54,
+                rowHeight: 80,
+                groupHeaderHeight: 34,
                 contentLeading: 14,
                 contentTrailing: 14
             )
