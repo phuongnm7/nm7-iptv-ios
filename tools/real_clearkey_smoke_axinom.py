@@ -249,7 +249,24 @@ def decrypt_sample(sample, key, iv, subs, scheme, crypt_block, skip_block):
 def main():
     kid = b64url_decode = base64.urlsafe_b64decode(KID_B64 + "=" * ((4 - len(KID_B64) % 4) % 4))
     key = base64.urlsafe_b64decode(KEY_B64 + "=" * ((4 - len(KEY_B64) % 4) % 4))
-    mpd_bytes, _, mpd_final, _ = get(MPD_URL)
+    mpd_bytes = None
+    mpd_final = None
+    last_error = None
+    manifest_candidates = [
+        MPD_URL,
+        "https://media.axprod.net/TestVectors/v7-MultiDRM-SingleKey/Manifest_ClearKey.mpd",
+    ]
+    for candidate in manifest_candidates:
+        try:
+            b, _, u, _ = get(candidate)
+            print(f"REAL MPD candidate: {u} bytes={len(b)}")
+            mpd_bytes, mpd_final = b, u
+            break
+        except Exception as exc:
+            print(f"MPD candidate failed: {candidate}: {exc}")
+            last_error = exc
+    if mpd_bytes is None:
+        raise RuntimeError(f"Không tải được MPD ClearKey công khai: {last_error}")
     print(f"REAL MPD: {mpd_final} bytes={len(mpd_bytes)}")
     root = ET.fromstring(mpd_bytes)
     period = children(root, "Period")[0]
@@ -282,9 +299,11 @@ def main():
         raise RuntimeError("SegmentTemplate is missing initialization/media")
     init_url = urljoin(base_url, init_ref)
     media_url = urljoin(base_url, media_ref)
+    print(f"RESOLVED INIT={init_url}")
+    print(f"RESOLVED MEDIA={media_url}")
 
-    init, _, init_final, _ = get(init_url)
-    media, _, media_final, _ = get(media_url)
+    init, _, init_final, _ = get(init_url, {"User-Agent": UA, "Referer": "https://media.axprod.net/"})
+    media, _, media_final, _ = get(media_url, {"User-Agent": UA, "Referer": "https://media.axprod.net/"})
     print(f"REAL SEGMENTS: init={init_final} bytes={len(init)} media={media_final} bytes={len(media)}")
 
     version, protected, iv_size, tenc_kid, crypt, skip = tenc_info(init)
