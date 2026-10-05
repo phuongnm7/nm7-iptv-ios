@@ -694,7 +694,7 @@ extension UPlayer: UPlayerAssetProcessorsQueueDelegate {
         func wrap(_ raw: String, mode: String) -> String {
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             let normalized = trimmed.replacingOccurrences(
-                of: #"(?:%22|%27|\\\"|\')+$"#,
+                of: #"(?:%22|%27|"|')+$"#,
                 with: "",
                 options: [.regularExpression, .caseInsensitive]
             )
