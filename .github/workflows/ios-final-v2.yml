@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nm7-ios-final-v2
+  group: nm7-ios-1-0-70-v3
   cancel-in-progress: true
 
 jobs:
@@ -80,19 +80,19 @@ jobs:
       - name: Package IPA
         run: |
           set -euo pipefail
-          rm -rf Payload NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa
+          rm -rf Payload NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
           xattr -cr Payload
-          /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa Payload
-          unzip -t NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa
-          shasum -a 256 NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa > NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa.sha256
+          /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa Payload
+          unzip -t NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa
+          shasum -a 256 NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa > NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa.sha256
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: NM7-IPTV-iOS-1.0.70-FINAL-DRM-v2
+          name: NM7-IPTV-iOS-1.0.70-FINAL-DRM-v3
           path: |
-            NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa
-            NM7-IPTV-iOS-1.0.70-final-v2-unsigned.ipa.sha256
+            NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa
+            NM7-IPTV-iOS-1.0.70-final-v3-unsigned.ipa.sha256
           retention-days: 30
