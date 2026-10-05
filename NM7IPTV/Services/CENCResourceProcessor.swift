@@ -7,6 +7,9 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let ivSize: Int
         let constantIV: Data?
         let defaultSampleSize: Int
+        let scheme: String
+        let cryptBlock: Int
+        let skipBlock: Int
     }
 
     private struct Box {
@@ -103,11 +106,15 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
             guard parsed.isProtected == 1 else { continue }
 
+            let schemeInfo = parseSchemeInfo(data, trackRange: trak.offset..<trak.end)
             let info = TrackInfo(
                 kid: parsed.kid,
                 ivSize: parsed.ivSize,
                 constantIV: parsed.constantIV,
-                defaultSampleSize: trexDefaultSizes[trackID] ?? 0
+                defaultSampleSize: trexDefaultSizes[trackID] ?? 0,
+                scheme: schemeInfo.scheme,
+                cryptBlock: parsed.cryptBlock,
+                skipBlock: parsed.skipBlock
             )
             lock.lock()
             tracks[trackID] = info
@@ -122,7 +129,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     ///   v1+: reserved, crypt/skip, isProtected, IVSize, KID[16]
     /// Hence isProtected=+14, IVSize=+15, KID=+16 for both versions.
     static func parseTENC(data: Data, offset: Int, size: Int)
-        -> (version: Int, isProtected: Int, ivSize: Int, kid: Data, constantIV: Data?)? {
+        -> (version: Int, isProtected: Int, ivSize: Int, kid: Data, constantIV: Data?, cryptBlock: Int, skipBlock: Int)? {
         guard offset >= 0, size >= 32, offset + size <= data.count,
               data[offset + 4] == 0x74,
               data[offset + 5] == 0x65,
@@ -134,13 +141,17 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let version = Int(data[offset + 8])
         guard version == 0 || version >= 1 else { return nil }
 
+        let patternOffset = offset + 13
         let isProtectedOffset = offset + 14
         let ivSizeOffset = offset + 15
         let kidOffset = offset + 16
         guard kidOffset + 16 <= offset + size else { return nil }
 
+        let pattern = Int(data[patternOffset])
         let isProtected = Int(data[isProtectedOffset])
         let ivSize = Int(data[ivSizeOffset])
+        let cryptBlock = version >= 1 ? ((pattern >> 4) & 0x0F) : 0
+        let skipBlock = version >= 1 ? (pattern & 0x0F) : 0
         let kid = data.subdata(in: kidOffset..<(kidOffset + 16))
 
         var constantIV: Data?
@@ -163,7 +174,9 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             isProtected: isProtected,
             ivSize: ivSize,
             kid: kid,
-            constantIV: constantIV
+            constantIV: constantIV,
+            cryptBlock: cryptBlock,
+            skipBlock: skipBlock
         )
     }
     private func decryptFragments(_ source: Data) async throws -> Data {
@@ -273,7 +286,10 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                     &sample,
                     key: key,
                     iv: encryption.entries[index].iv,
-                    subsamples: encryption.entries[index].subsamples
+                    subsamples: encryption.entries[index].subsamples,
+                    scheme: info.scheme,
+                    cryptBlock: info.cryptBlock,
+                    skipBlock: info.skipBlock
                 )
                 output.replaceSubrange(sampleOffset..<(sampleOffset + size), with: sample)
                 sampleOffset += size
@@ -531,8 +547,16 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         _ sample: inout Data,
         key: Data,
         iv: Data,
-        subsamples: [(clear: Int, encrypted: Int)]?
+        subsamples: [(clear: Int, encrypted: Int)]?,
+        scheme: String,
+        cryptBlock: Int,
+        skipBlock: Int
     ) throws {
+        if scheme.lowercased() == "cbcs" || scheme.lowercased() == "cbc1" {
+            try decryptCBSSample(&sample, key: key, iv: iv, subsamples: subsamples,
+                                 cryptBlock: cryptBlock, skipBlock: skipBlock)
+            return
+        }
         var counter = iv
         if counter.count == 8 {
             counter.append(contentsOf: Array(repeating: 0, count: 8))
@@ -580,6 +604,133 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         } else {
             try cryptRange(&sample, offset: 0, length: sample.count, cryptor: cryptor)
         }
+    }
+
+    private func decryptCBSSample(
+        _ sample: inout Data,
+        key: Data,
+        iv: Data,
+        subsamples: [(clear: Int, encrypted: Int)]?,
+        cryptBlock: Int,
+        skipBlock: Int
+    ) throws {
+        guard key.count == kCCKeySizeAES128, iv.count == kCCBlockSizeAES128 else {
+            throw error("CBCS AES-128 key/IV không hợp lệ.")
+        }
+
+        var cursor = 0
+        let clearRanges = subsamples ?? [(clear: 0, encrypted: sample.count)]
+        var remainingPattern = 0
+        var remainingSkip = 0
+
+        func decryptRange(_ offset: Int, _ length: Int,
+                          cryptor: inout CCCryptorRef?) throws {
+            guard length > 0 else { return }
+            let blockSize = kCCBlockSizeAES128
+            let full = (length / blockSize) * blockSize
+            guard full > 0 else { return }
+
+            if cryptBlock == 0 && skipBlock == 0 {
+                if cryptor == nil {
+                    cryptor = try makeCBCryptor(key: key, iv: iv)
+                }
+                try cryptRangeWithCryptor(&sample, offset: offset, length: full, cryptor: cryptor!)
+                return
+            }
+
+            var pos = 0
+            while pos + blockSize <= full {
+                if remainingPattern == 0 && remainingSkip == 0 {
+                    remainingPattern = cryptBlock
+                    remainingSkip = skipBlock
+                }
+
+                if remainingPattern > 0 {
+                    let blockCount = min(remainingPattern, max(1, (full - pos) / blockSize))
+                    if cryptor == nil {
+                        cryptor = try makeCBCryptor(key: key, iv: iv)
+                    }
+                    let bytes = blockCount * blockSize
+                    try cryptRangeWithCryptor(&sample, offset: offset + pos,
+                                              length: bytes, cryptor: cryptor!)
+                    pos += bytes
+                    remainingPattern -= blockCount
+                }
+
+                if remainingPattern == 0 && remainingSkip > 0 {
+                    let blockCount = min(remainingSkip, max(1, (full - pos) / blockSize))
+                    pos += blockCount * blockSize
+                    remainingSkip -= blockCount
+                }
+            }
+        }
+
+        var cryptor: CCCryptorRef?
+        defer {
+            if let cryptor { CCCryptorRelease(cryptor) }
+        }
+
+        for range in clearRanges {
+            guard cursor + range.clear + range.encrypted <= sample.count else {
+                throw error("CBCS subsample vượt sample.")
+            }
+            cursor += range.clear
+            try decryptRange(cursor, range.encrypted, &cryptor)
+            cursor += range.encrypted
+        }
+    }
+
+    private func makeCBCryptor(key: Data, iv: Data) throws -> CCCryptorRef {
+        var cryptor: CCCryptorRef?
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                CCCryptorCreateWithMode(
+                    CCOperation(kCCDecrypt),
+                    CCMode(kCCModeCBC),
+                    CCAlgorithm(kCCAlgorithmAES128),
+                    CCPadding(ccNoPadding),
+                    ivBytes.baseAddress,
+                    keyBytes.baseAddress,
+                    key.count,
+                    nil,
+                    0,
+                    0,
+                    0,
+                    &cryptor
+                )
+            }
+        }
+        guard status == kCCSuccess, let cryptor else {
+            throw error("Không khởi tạo được AES-CBC.")
+        }
+        return cryptor
+    }
+
+    private func cryptRangeWithCryptor(
+        _ data: inout Data,
+        offset: Int,
+        length: Int,
+        cryptor: CCCryptorRef
+    ) throws {
+        guard length > 0 else { return }
+        var output = [UInt8](repeating: 0, count: length)
+        var moved = 0
+        let status = data.withUnsafeBytes { input in
+            output.withUnsafeMutableBytes { out in
+                CCCryptorUpdate(
+                    cryptor,
+                    input.baseAddress!.advanced(by: offset),
+                    length,
+                    out.baseAddress,
+                    length,
+                    &moved
+                )
+            }
+        }
+        guard status == kCCSuccess, moved == length else {
+            throw error("AES-CBC giải mã sample thất bại.")
+        }
+        data.replaceSubrange(offset..<(offset + length), with: output)
     }
 
     private func cryptRange(_ data: inout Data, offset: Int, length: Int, cryptor: CCCryptorRef) throws {
@@ -735,6 +886,19 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             data[i + 2] == type[2] && data[i + 3] == type[3] {
             data.replaceSubrange(i..<(i + 4), with: replacement)
         }
+    }
+
+    private func parseSchemeInfo(_ data: Data, trackRange: Range<Int>)
+        -> (scheme: String, cryptBlock: Int, skipBlock: Int) {
+        guard let schm = findRawBox(type: "schm", in: data, range: trackRange),
+              schm.contentStart + 8 <= schm.end else {
+            return ("cenc", 0, 0)
+        }
+        let scheme = String(
+            data: data.subdata(in: (schm.contentStart + 4)..<(schm.contentStart + 8)),
+            encoding: .ascii
+        )?.lowercased() ?? "cenc"
+        return (scheme, 0, 0)
     }
 
     private func topLevelBoxes(_ type: String, in data: Data) -> [Box] {
