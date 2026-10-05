@@ -656,6 +656,10 @@ extension UPlayer: UPlayerAssetProcessorsQueueDelegate {
             existingAsset.type = asset.type
             existingAsset.httpMetadata = asset.httpMetadata
             existingAsset.mpdMetadata = asset.mpdMetadata
+            existingAsset.mediaResourceProcessor = self.mediaResourceProcessor
+            if existingAsset.mediaResourceProcessor != nil {
+                rewriteHLSForMediaProcessor(asset)
+            }
             mergeLiveHLS(
                 existing: existingAsset.hlsMetadata,
                 incoming: asset.hlsMetadata
