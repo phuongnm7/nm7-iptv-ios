@@ -7,7 +7,7 @@
 
 import Foundation
 
-public final class MP4SIDXReference: AnyObject {
+public final class MP4SIDXReference {
     let referenceType: UInt8
     let referencedSize: UInt32
     let subsegmentDuration: UInt32
@@ -25,7 +25,7 @@ public final class MP4SIDXReference: AnyObject {
     }
 }
 
-public final class MP4SIDX: AnyObject {
+public final class MP4SIDX {
     let timescale: UInt32
     let earliestPresentationTime: UInt64
     let firstOffset: UInt64
@@ -39,7 +39,7 @@ public final class MP4SIDX: AnyObject {
     }
 }
 
-public final class SIDXDataReader: AnyObject {
+public final class SIDXDataReader {
     let data: Data
     var offset: Int = 0
     
@@ -95,7 +95,7 @@ public final class SIDXDataReader: AnyObject {
     }
 }
 
-public final class RemoteByteRangeLoader: AnyObject {
+public final class RemoteByteRangeLoader {
     static func load(url: URL, range: ClosedRange<Int64>) async throws -> Data {
         var request = URLRequest(url: url)
         request.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
@@ -118,7 +118,7 @@ public final class RemoteByteRangeLoader: AnyObject {
     }
 }
 
-public final class MP4SIDXParser: AnyObject {
+public final class MP4SIDXParser {
     static func parse(data: Data) throws -> MP4SIDX {
         let reader = SIDXDataReader(data: data)
 
@@ -188,7 +188,7 @@ public final class MP4SIDXParser: AnyObject {
     }
 }
 
-public final class HLSByteRangeGenerator: AnyObject {
+public final class HLSByteRangeGenerator {
     static func generatePlaylist(
         mediaURL: URL,
         initRange: ClosedRange<Int64>,
