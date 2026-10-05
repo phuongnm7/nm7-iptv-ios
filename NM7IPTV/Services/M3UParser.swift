@@ -121,7 +121,7 @@ enum M3UParser {
     /// The same playlist already contains non-DRM HLS versions for VTV2/3/7/9/10.
     /// Keep those backup entries visible, but make their playback URL point to the
     /// known HLS stream so the iOS app can actually play the backup group.
-    private static func makeIOSCompatible(_ channels: [Channel]) -> [Channel] {
+    static func normalizeForIOS(_ channels: [Channel]) -> [Channel] {
         var result: [Channel] = []
         result.reserveCapacity(channels.count)
 
