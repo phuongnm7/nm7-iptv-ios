@@ -72,8 +72,14 @@ struct PlayerScreen: View {
     private var videoPane: some View {
         ZStack {
             VideoPlayer(player: channelPlayer.activeAVPlayer)
-                .opacity(channelPlayer.engine == .avPlayer ? 1 : 0)
-                .allowsHitTesting(channelPlayer.engine == .avPlayer)
+                .opacity(
+                    channelPlayer.engine == .avPlayer || channelPlayer.engine == .dashClearKey
+                        ? 1
+                        : 0
+                )
+                .allowsHitTesting(
+                    channelPlayer.engine == .avPlayer || channelPlayer.engine == .dashClearKey
+                )
 
             VLCVideoSurface(channelPlayer: channelPlayer)
                 .opacity(channelPlayer.engine == .vlc ? 1 : 0)
