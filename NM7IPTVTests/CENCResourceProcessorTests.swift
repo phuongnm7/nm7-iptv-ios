@@ -106,6 +106,142 @@ final class CENCResourceProcessorTests: XCTestCase {
         XCTAssertEqual(result.subdata(in: secondPayloadOffset..<(secondPayloadOffset + expected2.count)), expected2)
     }
 
+    func testCENCHandlesMultipleTrunEntriesInOneTraf() async throws {
+        let keyHex = "ffeeddccbbaa99887766554433221100"
+        let kidHex = "00112233445566778899aabbccddeeff"
+        let iv1 = Data(hex: "00112233445566778899aabbccddeeff")
+        let iv2 = Data(hex: "102132435465768798a9bacbdcedfe0f")
+        let ct1 = Data(hex: "94073fd2b9d7fd5a3f6e42407e0d358742e1f1154484b1be22cf16ea75dcdb70")
+        let ct2 = Data(hex: "9ecd0a06d2ae2e14c3986e69f7df21216f0e4cdcdd56beb851f243a9748a40")
+
+        let drm = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=\(kidHex):\(keyHex)"
+        ])
+        let processor = CENCResourceProcessor(drm: drm, headers: [:])
+
+        let tkhd = makeFullBoxBox(type: "tkhd", version: 0, flags: 0, body: {
+            var body = Data(repeating: 0, count: 12)
+            body.replaceSubrange(8..<12, with: [0, 0, 0, 1])
+            return body
+        }())
+        let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 16, kid: Data(hex: kidHex))
+        let moov = makeBox("moov", makeBox("trak", tkhd + tenc))
+
+        let tfhd = makeFullBoxBox(type: "tfhd", version: 0, flags: 0, body: Data([0, 0, 0, 1]))
+        let senc = makeFullBoxBox(
+            type: "senc",
+            version: 0,
+            flags: 0,
+            body: Data([0, 0, 0, 2]) + iv1 + iv2
+        )
+
+        var moof = makeBox(
+            "moof",
+            makeBox(
+                "traf",
+                tfhd
+                    + makeTRUN(dataOffset: 0, sampleSize: UInt32(ct1.count))
+                    + makeTRUN(dataOffset: 0, sampleSize: UInt32(ct2.count))
+                    + senc
+            )
+        )
+
+        let firstOffset = Int32(moof.count + 8)
+        let secondOffset = firstOffset + Int32(ct1.count)
+
+        moof = makeBox(
+            "moof",
+            makeBox(
+                "traf",
+                tfhd
+                    + makeTRUN(dataOffset: firstOffset, sampleSize: UInt32(ct1.count))
+                    + makeTRUN(dataOffset: secondOffset, sampleSize: UInt32(ct2.count))
+                    + senc
+            )
+        )
+
+        let fragment = moof + makeBox("mdat", ct1 + ct2)
+
+        _ = try await processor.processMediaData(
+            moov,
+            sourceURL: URL(string: "https://example.test/init.mp4")!
+        )
+        let result = try await processor.processMediaData(
+            fragment,
+            sourceURL: URL(string: "https://example.test/multi-trun.mp4")!
+        )
+
+        let firstExpected = Data("NM7-CENC-TEST-PAYLOAD-1234567890".utf8)
+        let secondExpected = Data("NM7-CENC-SECOND-FRAGMENT-987654".utf8)
+
+        let firstPayload = result.subdata(in: Int(firstOffset)..<(Int(firstOffset) + firstExpected.count))
+        let secondPayload = result.subdata(in: Int(secondOffset)..<(Int(secondOffset) + secondExpected.count))
+
+        XCTAssertEqual(firstPayload, firstExpected)
+        XCTAssertEqual(secondPayload, secondExpected)
+    }
+
+    func testCENCReadsTfhdDefaultSampleFlagsBeforeTrunFields() async throws {
+        let key = Data(hex: "ffeeddccbbaa99887766554433221100")
+        let kid = Data(hex: "00112233445566778899aabbccddeeff")
+        let iv = Data(hex: "00112233445566778899aabbccddeeff")
+        let ciphertext = Data(hex: "94073fd2b9d7fd5a3f6e42407e0d358742e1f1154484b1be22cf16ea75dcdb70")
+
+        let drm = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
+        ])
+        let processor = CENCResourceProcessor(drm: drm, headers: [:])
+
+        let tkhd = makeFullBoxBox(type: "tkhd", version: 0, flags: 0, body: {
+            var body = Data(repeating: 0, count: 12)
+            body.replaceSubrange(8..<12, with: [0, 0, 0, 1])
+            return body
+        }())
+        let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 16, kid: kid)
+        let moov = makeBox("moov", makeBox("trak", tkhd + tenc))
+
+        let tfhd = makeFullBoxBox(
+            type: "tfhd",
+            version: 0,
+            flags: 0x000020,
+            body: Data([0, 0, 0, 1, 0, 0, 0, 0x10])
+        )
+        var moof = makeBox(
+            "moof",
+            makeBox(
+                "traf",
+                tfhd
+                    + makeTRUN(dataOffset: 0, sampleSize: UInt32(ciphertext.count))
+                    + makeFullBoxBox(type: "senc", version: 0, flags: 0, body: Data([0, 0, 0, 1]) + iv)
+            )
+        )
+        let dataOffset = Int32(moof.count + 8)
+        moof = makeBox(
+            "moof",
+            makeBox(
+                "traf",
+                tfhd
+                    + makeTRUN(dataOffset: dataOffset, sampleSize: UInt32(ciphertext.count))
+                    + makeFullBoxBox(type: "senc", version: 0, flags: 0, body: Data([0, 0, 0, 1]) + iv)
+            )
+        )
+
+        let result = try await processor.processMediaData(
+            moov + moof + makeBox("mdat", ciphertext),
+            sourceURL: URL(string: "https://example.test/tfhd-flags.mp4")!
+        )
+        let expected = Data("NM7-CENC-TEST-PAYLOAD-1234567890".utf8)
+        let payloadOffset = moov.count + Int(dataOffset)
+
+        XCTAssertEqual(
+            result.subdata(in: payloadOffset..<(payloadOffset + expected.count)),
+            expected
+        )
+    }
+
+
     private func makeFragment(iv: Data, ciphertext: Data, dataOffset: Int32) -> Data {
         let tfhd = makeFullBoxBox(type: "tfhd", version: 0, flags: 0, body: Data([0, 0, 0, 1]))
         let senc = makeFullBoxBox(type: "senc", version: 0, flags: 0, body: Data([0, 0, 0, 1]) + iv)
