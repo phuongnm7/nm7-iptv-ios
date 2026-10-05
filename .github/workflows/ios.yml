@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DESTINATION_ID="$(xcrun simctl list devices available | grep -E '^[[:space:]]+iPhone ' | sed -E -n 's/.*\\(([0-9A-F-]{36})\\).*/\\1/p' | head -n 1)"
+          DESTINATION_ID="$(xcrun simctl list devices available | grep -E '^[[:space:]]+iPhone ' | grep -oE '[0-9A-F-]{36}' | head -n 1)"
           if [ -z "$DESTINATION_ID" ]; then
             echo "No available iPhone Simulator found."
             xcrun simctl list devices available
