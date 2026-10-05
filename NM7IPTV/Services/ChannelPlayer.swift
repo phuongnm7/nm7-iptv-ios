@@ -21,6 +21,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
     private var fallbackTask: Task<Void, Never>?
     private var currentChannel: Channel?
     private weak var vlcDrawable: UIView?
+    private var fairPlayLoader: FairPlayKeyLoader?
 
     override init() {
         super.init()
@@ -63,15 +64,43 @@ final class ChannelPlayer: NSObject, ObservableObject {
         isLoading = true
         engine = .avPlayer
 
+        let drm = DRMInfo.from(options: channel.options)
+        if drm.hasDRM && !drm.isNativeFairPlay {
+            showError("Nguồn này dùng DRM Android (Widevine/PlayReady/ClearKey). iPhone/iPad cần phiên HLS + FairPlay do nhà cung cấp hỗ trợ.")
+            return
+        }
+        if channel.isDASH {
+            showError("Nguồn DASH này không có đường phát native iOS. Hãy dùng HLS tương thích Apple.")
+            return
+        }
+
         var headers = channel.httpHeaders
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
-            headers["User-Agent"] = "NM7-IPTV-iOS/0.3.0"
+            headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
         }
 
         let asset = AVURLAsset(
             url: channel.streamURL,
             options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
         )
+
+        if drm.isNativeFairPlay {
+            guard let certificateURL = drm.certificateURL, let licenseURL = drm.licenseURL else {
+                showError("Kênh FairPlay thiếu certificate URL hoặc license URL.")
+                return
+            }
+
+            let licenseHeaders = drm.licenseHeaders.merging(channel.httpHeaders) { license, _ in license }
+            let loader = FairPlayKeyLoader(
+                certificateURL: certificateURL,
+                licenseURL: licenseURL,
+                headers: licenseHeaders
+            )
+            fairPlayLoader = loader
+            let queue = DispatchQueue(label: "vn.phuongnm7.nm7iptv.fairplay.asset")
+            asset.resourceLoader.setDelegate(loader, queue: queue)
+        }
+
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -81,7 +110,11 @@ final class ChannelPlayer: NSObject, ObservableObject {
                 case .readyToPlay:
                     break
                 case .failed:
-                    self.startVLCFallback(for: channel)
+                    if drm.hasDRM {
+                        self.showError("iOS không mở được phiên FairPlay của kênh. Kiểm tra certificate, license và quyền phát.")
+                    } else {
+                        self.startVLCFallback(for: channel)
+                    }
                 default:
                     break
                 }
@@ -93,7 +126,8 @@ final class ChannelPlayer: NSObject, ObservableObject {
         fallbackTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
             guard !Task.isCancelled, let self, self.engine == .avPlayer,
-                  self.player.timeControlStatus != .playing else { return }
+                  self.player.timeControlStatus != .playing,
+                  !drm.hasDRM else { return }
             self.startVLCFallback(for: channel)
         }
     }
@@ -150,6 +184,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         vlcPlayer.stop()
+        fairPlayLoader = nil
     }
 }
 
