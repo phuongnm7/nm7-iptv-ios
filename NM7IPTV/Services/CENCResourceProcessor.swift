@@ -71,39 +71,69 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             guard let tkhd = childBoxes(data, parent: trak).first(where: { $0.type == "tkhd" }),
                   let trackID = parseTrackID(data, tkhd: tkhd),
                   let tenc = findRawBox(type: "tenc", in: data, range: trak.offset..<trak.end),
-                  tenc.end <= data.count,
-                  tenc.offset + 31 <= data.count else { continue }
-
-            // tenc is a FullBox. The field layout is version-dependent:
-            // v0: reserved(1), reserved(1), isProtected(1), IVSize(1), KID(16)
-            // v1+: reserved(1), crypt/skip(1), isProtected(1), IVSize(1), KID(16)
-            // Both layouts therefore place IVSize at boxOffset + 13 and KID at +14.
-            let version = Int(data[tenc.offset + 8])
-            let ivSizeOffset = tenc.offset + 13
-            let kidOffset = tenc.offset + 14
-            guard kidOffset + 16 <= tenc.end else { continue }
-            let ivSize = Int(data[ivSizeOffset])
-            let kid = data.subdata(in: kidOffset..<(kidOffset + 16))
-
-            var constantIV: Data?
-            if ivSize == 0 {
-                let constantSizeOffset = kidOffset + 16
-                if constantSizeOffset < tenc.end {
-                    let size = Int(data[constantSizeOffset])
-                    let constantOffset = constantSizeOffset + 1
-                    if size > 0, constantOffset + size <= tenc.end {
-                        constantIV = data.subdata(in: constantOffset..<(constantOffset + size))
-                    }
-                }
+                  let parsed = Self.parseTENC(data: data, offset: tenc.offset, size: tenc.size) else {
+                continue
             }
 
-            // Keep this explicit so malformed/unsupported tenc versions don't
-            // silently masquerade as a valid track configuration.
-            guard version == 0 || version >= 1 else { continue }
-            tracks[trackID] = TrackInfo(kid: kid, ivSize: ivSize, constantIV: constantIV)
+            tracks[trackID] = TrackInfo(
+                kid: parsed.kid,
+                ivSize: parsed.ivSize,
+                constantIV: parsed.constantIV
+            )
         }
     }
 
+    /// Parses ISO/IEC 23001-7 TrackEncryptionBox.
+    ///
+    /// After the 8-byte BMFF header + 4-byte FullBox header, the tenc body is:
+    ///   v0: reserved, reserved, isProtected, IVSize, KID[16]
+    ///   v1+: reserved, crypt/skip, isProtected, IVSize, KID[16]
+    /// Hence isProtected=+14, IVSize=+15, KID=+16 for both versions.
+    static func parseTENC(data: Data, offset: Int, size: Int)
+        -> (version: Int, isProtected: Int, ivSize: Int, kid: Data, constantIV: Data?)? {
+        guard offset >= 0, size >= 32, offset + size <= data.count,
+              data[offset + 4] == 0x74,
+              data[offset + 5] == 0x65,
+              data[offset + 6] == 0x6E,
+              data[offset + 7] == 0x63 else {
+            return nil
+        }
+
+        let version = Int(data[offset + 8])
+        guard version == 0 || version >= 1 else { return nil }
+
+        let isProtectedOffset = offset + 14
+        let ivSizeOffset = offset + 15
+        let kidOffset = offset + 16
+        guard kidOffset + 16 <= offset + size else { return nil }
+
+        let isProtected = Int(data[isProtectedOffset])
+        let ivSize = Int(data[ivSizeOffset])
+        let kid = data.subdata(in: kidOffset..<(kidOffset + 16))
+
+        var constantIV: Data?
+        if isProtected == 1 && ivSize == 0 {
+            let constantSizeOffset = kidOffset + 16
+            guard constantSizeOffset < offset + size else { return nil }
+            let constantSize = Int(data[constantSizeOffset])
+            guard constantSize > 0,
+                  constantSize <= 16,
+                  constantSizeOffset + 1 + constantSize <= offset + size else {
+                return nil
+            }
+            constantIV = data.subdata(
+                in: (constantSizeOffset + 1)..<(constantSizeOffset + 1 + constantSize)
+            )
+        }
+
+        return (
+            version: version,
+            isProtected: isProtected,
+            ivSize: ivSize,
+            kid: kid,
+            constantIV: constantIV
+        )
+    }
     private func decryptFragment(_ source: Data) async throws -> Data {
         guard let moof = findTopLevelBox("moof", in: source) else { return source }
         var output = source
@@ -410,8 +440,11 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         var result = data
         rewriteProtectedSampleEntries(&result)
 
-        // Mark track encryption as unprotected after the sample bytes are handled by this processor.
-        rewriteProtectedFlags(&result)
+        // Samples are decrypted before AVPlayer sees them. Keep byte offsets
+        // unchanged, but stop the decoded sample entry from advertising CENC.
+        // Re-typing sinf as free makes AVFoundation ignore the protection
+        // wrapper without rebuilding the enclosing stsd box.
+        rewriteProtectionContainers(&result)
         return result
     }
 
@@ -460,15 +493,15 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         }
     }
 
-    private func rewriteProtectedFlags(_ data: inout Data) {
-        let type = Array("tenc".utf8)
-        guard data.count >= 16 else { return }
-        for i in 4..<(data.count - 3) where data[i] == type[0] &&
-            data[i + 1] == type[1] && data[i + 2] == type[2] && data[i + 3] == type[3] {
-            let start = i - 4
-            guard start >= 0, start + 31 < data.count else { continue }
-            data[start + 13] = 0
-            data[start + 14] = 0
+    private func rewriteProtectionContainers(_ data: inout Data) {
+        let type = Array("sinf".utf8)
+        let replacement = Array("free".utf8)
+        guard data.count >= 12 else { return }
+
+        for i in 4..<(data.count - 3) where
+            data[i] == type[0] && data[i + 1] == type[1] &&
+            data[i + 2] == type[2] && data[i + 3] == type[3] {
+            data.replaceSubrange(i..<(i + 4), with: replacement)
         }
     }
 
