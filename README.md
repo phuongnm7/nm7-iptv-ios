@@ -9,18 +9,15 @@
 - **Nền tham chiếu:** NM7 TV Android 1.0.69
 - **Android reference commit:** `f79fc06009f20e0ac3a5859c0abcfd6ce70a6763`
 - **iOS branch:** `release/ios-1.0.69-final-drm-v2`
-- **Latest app-build commit:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`
+- **Latest source commit:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`
 - **Nền tảng:** iOS/iPadOS 16+
 - **Thiết bị:** iPhone + iPad
 - **UI:** SwiftUI
 - **Player chính:** AVPlayer
 - **Player dự phòng:** MobileVLCKit / VLC
 - **Repository:** Public để sử dụng GitHub-hosted macOS runner
-- **CI cuối cùng đã xác minh:** **run #15 — SUCCESS toàn bộ**: Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
-- **IPA cuối:** `NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa`
-- **IPA SHA256:** `ab0b39b4a16e1d4022769da57ab60e98a3b08fe34c98cbac3a2ef6a135dc8d61`
-- **Artifact:** `NM7-IPTV-iOS-1.0.69-FINAL-DRM-v2` (ID `11340591479`)
-- **Artifact digest:** `sha256:fc2d0f6ff3ae107e55063a738e8fa28b17b30540c3de68b3deeca2e30732d8f4`
+
+> **CẢNH BÁO TRẠNG THÁI:** GitHub Actions hiện có run #15 **SUCCESS** ở mức build/package và unit test. Tuy nhiên, điều đó **không đồng nghĩa bản app đã chạy đúng trên iPhone/iPad thật**. Theo kết quả kiểm tra thực tế hiện tại, các lỗi runtime trước đây vẫn còn và bản iOS 1.0.69 **chưa được coi là hoàn thành**.
 
 ## Mục tiêu của bản iOS 1.0.69
 
@@ -43,21 +40,45 @@ Bản này lấy **Android TV 1.0.69 làm source of truth về chức năng và 
 
 App truyền các header hợp lệ của playlist như User-Agent, Referer và Cookie khi cần.
 
-Đối với **DASH/ClearKey CENC**, app có đường xử lý native: MPD → fragmented MP4/HLS → giải mã sample CENC bằng ClearKey → AVPlayer. Parser CENC đã được sửa để đọc đúng `tenc` KID/IV. Với Widevine/PlayReady, app không giả định rằng build thành công đồng nghĩa đã có CDM tương ứng.
+Đối với **DASH/ClearKey CENC**, app có đường xử lý native: MPD → fragmented MP4/HLS → giải mã sample CENC bằng ClearKey → AVPlayer. Parser CENC đã được sửa nhiều vòng để đọc `tenc`, `senc`, `trun`, `saiz/saio` và nhiều `moof`. Tuy nhiên, **end-to-end runtime trên thiết bị thật vẫn chưa đạt**, nên chưa được xác nhận là đã phát DRM ổn định.
 
-## Các sửa lỗi player/DRM mới nhất
+Với Widevine/PlayReady, app không giả định rằng build thành công đồng nghĩa đã có CDM tương ứng.
 
-- Sửa `tenc` CENC bị lệch byte khi đọc KID và IV size.
-- Kiểm tra `senc`/`trun` sample count.
-- Bỏ spinner cố định phủ lên video.
-- Đưa 3 nút microphone / fullscreen / favorite vào vùng video pane, tránh che nhóm kênh.
-- Thêm unit test cho ClearKey inline `KID:KEY`.
+## Các vấn đề còn tồn tại — cần xử lý tiếp
+
+Theo kết quả kiểm tra hiện tại, bản iOS vẫn còn các lỗi runtime đã được phản ánh trước đó:
+
+- **DASH/ClearKey DRM chưa phát ổn định trên iPhone/iPad thật.**
+- Đường **MPD → HLS/fMP4 → CENC decrypt → AVPlayer** chưa có bằng chứng runtime end-to-end trên thiết bị thật.
+- Một số stream DRM/định dạng trước đây không phát được vẫn chưa được xác nhận đã khắc phục hoàn toàn.
+- Cần tiếp tục đối chiếu **giao diện với Android TV 1.0.69**, bao gồm vị trí điều khiển, trạng thái player và hình nền mặc định.
+- Không được đánh dấu “hoàn thành” chỉ dựa trên việc CI xanh.
+
+## Những gì đã được sửa trong source nhưng chưa coi là đã giải quyết hoàn toàn
+
+- Sửa vị trí đọc `default_KID` / `default_Per_Sample_IV_Size` của `tenc`.
+- Bổ sung đọc constant IV.
+- Bổ sung kiểm tra số sample giữa `senc` và `trun`.
+- Bổ sung xử lý `saiz/saio` khi không có `senc`.
+- Bổ sung xử lý nhiều `moof` trong một SegmentBase resource.
+- Thêm nhánh CENC/CBCS trong processor.
+- Không để `MPDToMP4Resolver` bỏ qua media resource processor CENC.
+- Bỏ spinner cố định phủ trên video.
+- Đưa microphone/fullscreen/favorite vào video pane để tránh chồng vùng nhóm.
+- Thêm unit test cho ClearKey inline `KID:KEY` và named-pair.
+
+Các thay đổi trên là **các bước kỹ thuật đã triển khai**, không phải bằng chứng rằng mọi lỗi runtime đã hết.
+
+## CI / build
+
+- **Run #15:** SUCCESS toàn bộ pipeline CI, gồm Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
+- **Commit của run #15:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`.
+- Run #14 trước đó FAIL tại CENC unit test do parser `trun` đọc sai vị trí FullBox; lỗi đó đã được sửa ở commit sau.
+- Run #15 chỉ chứng minh rằng source hiện tại **build được, test tự động hiện tại pass và đóng gói được**.
 
 ## Build & cài đặt
 
-GitHub Actions đã xác minh thành công bản iOS 1.0.69 ở **run #153**. IPA cuối là bản **unsigned** và đã được kiểm tra integrity, version và executable sau khi đóng gói.
-
-Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
+IPA iOS được đóng gói ở dạng **unsigned**. Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
 
 ## Nguyên tắc phát triển
 
@@ -65,12 +86,11 @@ GitHub Actions đã xác minh thành công bản iOS 1.0.69 ở **run #153**. IP
 - iOS/iPadOS dùng API native phù hợp với Apple.
 - Không làm thay đổi dự án Android.
 - Không tiếp tục vòng lặp sửa DRM Safari của bản web trong nhánh iOS này.
-- Mọi thay đổi lớn phải được build và kiểm tra bằng GitHub Actions trước khi coi là hoàn thành.
+- Không coi build CI xanh là bằng chứng phát được DRM trên thiết bị thật.
+- Mọi thay đổi DRM quan trọng phải có test parser/decrypt và sau đó phải được kiểm tra runtime bằng stream DASH/ClearKey hợp lệ.
 
 ## Tiến độ
 
-Đã hoàn thiện pipeline build/package cho iOS 1.0.69. **GitHub Actions run #15 đã SUCCESS toàn bộ** với commit app-build `1f481d5833cbcf3256c716afb00d69ac659fef4e`. IPA unsigned đã được tải xuống và kiểm tra trực tiếp: ZIP integrity PASS, executable PASS, version `1.0.69`, build `69`, `Assets.car` PASS và `nm7_default_background_new.webp` PASS.
-
-Đường DASH/ClearKey CENC đã được sửa và có bộ unit test CENC/DRM riêng; các unit test đã PASS trong run #15. Đây là bằng chứng parser/giải mã mẫu và pipeline build hoạt động đúng trong môi trường CI. Việc xác nhận **phát end-to-end trên iPhone/iPad thật** vẫn cần cài IPA và chạy một stream DASH/ClearKey có quyền phát trên thiết bị thật.
+**Chưa hoàn thành.** Source hiện tại đã có một lượng lớn xử lý CENC/ClearKey và CI run #15 đã xanh, nhưng lỗi runtime mà người dùng đang gặp vẫn chưa được giải quyết dứt điểm. Mốc tiếp theo phải tập trung vào **nguyên nhân khiến stream DASH/ClearKey thực tế vẫn không phát**, thay vì tiếp tục chỉ làm cho build xanh.
 
 Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
