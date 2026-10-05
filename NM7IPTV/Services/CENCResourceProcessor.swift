@@ -63,14 +63,22 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     }
 
     func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data {
-        if let moov = findTopLevelBox("moov", in: data) {
-            parseTrackEncryption(data, moov: moov)
-            return sanitizeInitialization(data)
+        // A SegmentBase representation can point all EXT-X-BYTERANGE entries
+        // at one physical MP4 containing moov + many moof boxes. Never return
+        // early just because moov exists: the requested byte range may belong
+        // to a later encrypted fragment.
+        var output = data
+
+        if let moov = findTopLevelBox("moov", in: output) {
+            parseTrackEncryption(output, moov: moov)
+            output = sanitizeInitialization(output)
         }
-        if findTopLevelBox("moof", in: data) != nil {
-            return try await decryptFragment(data)
+
+        if findTopLevelBox("moof", in: output) != nil {
+            output = try await decryptFragments(output)
         }
-        return data
+
+        return output
     }
 
     private func parseTrackEncryption(_ data: Data, moov: Box) {
@@ -152,11 +160,13 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             constantIV: constantIV
         )
     }
-    private func decryptFragment(_ source: Data) async throws -> Data {
-        guard let moof = findTopLevelBox("moof", in: source) else { return source }
+    private func decryptFragments(_ source: Data) async throws -> Data {
+        let moofs = topLevelBoxes("moof", in: source)
+        guard !moofs.isEmpty else { return source }
         var output = source
 
-        for traf in childBoxes(source, parent: moof).filter({ $0.type == "traf" }) {
+        for moof in moofs {
+            for traf in childBoxes(source, parent: moof).filter({ $0.type == "traf" }) {
             guard let tfhd = childBoxes(source, parent: traf).first(where: { $0.type == "tfhd" }),
                   let trun = childBoxes(source, parent: traf).first(where: { $0.type == "trun" }) else {
                 continue
@@ -714,6 +724,19 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             data[i + 2] == type[2] && data[i + 3] == type[3] {
             data.replaceSubrange(i..<(i + 4), with: replacement)
         }
+    }
+
+    private func topLevelBoxes(_ type: String, in data: Data) -> [Box] {
+        var result: [Box] = []
+        var cursor = 0
+        while let box = boxAt(data, cursor: cursor, limit: data.count) {
+            if box.type == type {
+                result.append(box)
+            }
+            cursor = box.end
+            if cursor >= data.count { break }
+        }
+        return result
     }
 
     private func findTopLevelBox(_ type: String, in data: Data) -> Box? {
