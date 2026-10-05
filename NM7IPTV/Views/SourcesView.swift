@@ -1,12 +1,16 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SourcesView: View {
     @ObservedObject var model: AppViewModel
     @ObservedObject private var store: SourceStore
     @State private var showingAdd = false
+    @State private var showingImporter = false
+    @State private var showingFileError = false
     @State private var name = ""
     @State private var url = ""
     @State private var formError: String?
+    @State private var fileError: String?
 
     init(model: AppViewModel) {
         self.model = model
@@ -25,7 +29,10 @@ struct SourcesView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(store.customSources) { source in
-                            sourceRow(source, subtitle: source.url.absoluteString)
+                            sourceRow(
+                                source,
+                                subtitle: source.url.isFileURL ? "Tệp M3U đã nhập trên thiết bị" : source.url.absoluteString
+                            )
                         }
                         .onDelete { offsets in
                             store.remove(at: offsets)
@@ -36,7 +43,12 @@ struct SourcesView: View {
             }
             .navigationTitle("Quản lý nguồn")
             .toolbar {
-                Button { showingAdd = true } label: { Label("Thêm nguồn", systemImage: "plus") }
+                Menu {
+                    Button("Thêm URL", systemImage: "link") { showingAdd = true }
+                    Button("Nhập tệp M3U", systemImage: "doc.badge.plus") { showingImporter = true }
+                } label: {
+                    Label("Thêm nguồn", systemImage: "plus")
+                }
             }
             .sheet(isPresented: $showingAdd) {
                 NavigationStack {
@@ -60,6 +72,33 @@ struct SourcesView: View {
                         }
                     }
                 }
+            }
+            .fileImporter(
+                isPresented: $showingImporter,
+                allowedContentTypes: [
+                    UTType(filenameExtension: "m3u") ?? .plainText,
+                    UTType(filenameExtension: "m3u8") ?? .plainText,
+                    .plainText
+                ],
+                allowsMultipleSelection: false
+            ) { result in
+                do {
+                    guard let selectedURL = try result.get().first else { return }
+                    let hasSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+                    defer {
+                        if hasSecurityScope { selectedURL.stopAccessingSecurityScopedResource() }
+                    }
+                    let source = try store.importPlaylistFile(from: selectedURL)
+                    Task { await model.selectSource(source) }
+                } catch {
+                    fileError = error.localizedDescription
+                    showingFileError = true
+                }
+            }
+            .alert("Không nhập được playlist", isPresented: $showingFileError) {
+                Button("Đóng", role: .cancel) {}
+            } message: {
+                Text(fileError ?? "Tệp không đọc được.")
             }
         }
     }
