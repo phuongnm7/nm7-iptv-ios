@@ -27,6 +27,7 @@ public protocol UPlayerAssetProtocol: AnyObject {
     var mpdMetadata: UPlayerAssetMPDDataProtocol? { get set }
     var hlsMetadata: UPlayerAssetHLSDataProtocol? { get set }
     var thumbnailMetadata: UPlayerAssetThumbnailDataProtocol? { get set }
+    var httpHeaders: [String: String] { get set }
     
     init(url: URL)
     
@@ -53,6 +54,7 @@ public class UPlayerAsset: UPlayerAssetProtocol {
     public var hlsMetadata: UPlayerAssetHLSDataProtocol?
 
     public var thumbnailMetadata: (any UPlayerAssetThumbnailDataProtocol)?
+    public var httpHeaders: [String: String] = [:]
     
     public required init(url: URL) {
         self.url = url
@@ -61,6 +63,7 @@ public class UPlayerAsset: UPlayerAssetProtocol {
     public func addAssetLoader(_ loader: UPlayerAVAssetResourceLoaderProtocol) {
         avAssetLoader = loader
         avAssetLoader?.dataDelegate = self
+        avAssetLoader?.mediaRequestHeader = httpHeaders
     }
 }
 
