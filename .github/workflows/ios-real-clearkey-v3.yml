@@ -1,9 +1,9 @@
-name: NM7 IPTV iOS 1.0.71 REAL CLEARKEY v3
+name: NM7 IPTV iOS 1.0.72 SPORTS VLC + CLEARKEY v4
 
 on:
   push:
     branches:
-      - fix/ios-1.0.71-real-clearkey-navigation
+      - fix/ios-1.0.72-real-clearkey-navigation
   workflow_dispatch:
 
 concurrency:
@@ -83,25 +83,25 @@ jobs:
           test -d "$APP"
           test -f "$APP/nm7_default_background_new.webp"
           test -f "$APP/Assets.car"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | grep -Fx "1.0.71"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | grep -Fx "1.0.72"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" | grep -Fx "71"
 
       - name: Package IPA
         run: |
           set -euo pipefail
-          rm -rf Payload NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa
+          rm -rf Payload NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
           xattr -cr Payload
-          /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa Payload
-          unzip -t NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa
-          shasum -a 256 NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa > NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa.sha256
+          /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa Payload
+          unzip -t NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa
+          shasum -a 256 NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa > NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa.sha256
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: NM7-IPTV-iOS-1.0.71-REAL-CLEARKEY
+          name: NM7-IPTV-iOS-1.0.72-REAL-CLEARKEY
           path: |
-            NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa
-            NM7-IPTV-iOS-1.0.71-real-clearkey-unsigned.ipa.sha256
+            NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa
+            NM7-IPTV-iOS-1.0.72-real-clearkey-unsigned.ipa.sha256
           retention-days: 30
