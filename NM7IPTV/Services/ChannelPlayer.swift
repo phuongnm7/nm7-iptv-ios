@@ -3,7 +3,7 @@ import Foundation
 import MobileVLCKit
 import UIKit
 
-enum ChannelPlayerEngine: Equatable { case avPlayer, vlc }
+enum ChannelPlayerEngine { case avPlayer, vlc }
 
 final class ChannelPlayer: NSObject, ObservableObject {
 
