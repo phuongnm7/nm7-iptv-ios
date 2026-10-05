@@ -96,8 +96,13 @@ public final class SIDXDataReader {
 }
 
 public final class RemoteByteRangeLoader {
-    static func load(url: URL, range: ClosedRange<Int64>) async throws -> Data {
+    static func load(
+        url: URL,
+        range: ClosedRange<Int64>,
+        headers: [String: String] = [:]
+    ) async throws -> Data {
         var request = URLRequest(url: url)
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
 
         let (data, response) = try await URLSession.shared.data(for: request)
