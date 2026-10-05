@@ -50,6 +50,69 @@ final class CENCResourceProcessorTests: XCTestCase {
         )
     }
 
+    func testCENCDecryptsEveryMoofInOneSegmentBaseResource() async throws {
+        let key = Data(hex: "ffeeddccbbaa99887766554433221100")
+        let kid = Data(hex: "00112233445566778899aabbccddeeff")
+        let iv1 = Data(hex: "00112233445566778899aabbccddeeff")
+        let iv2 = Data(hex: "102132435465768798a9bacbdcedfe0f")
+        let ct1 = Data(hex: "94073fd2b9d7fd5a3f6e42407e0d358742e1f1154484b1be22cf16ea75dcdb70")
+        let ct2 = Data(hex: "9ecd0a06d2ae2e14c3986e69f7df21216f0e4cdcdd56beb851f243a9748a40")
+
+        XCTAssertEqual(key.count, 16)
+        XCTAssertEqual(kid.count, 16)
+
+        let drm = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
+        ])
+        let processor = CENCResourceProcessor(drm: drm, headers: [:])
+
+        let tkhd = makeFullBoxBox(type: "tkhd", version: 0, flags: 0, body: {
+            var body = Data(repeating: 0, count: 12)
+            body.replaceSubrange(8..<12, with: [0, 0, 0, 1])
+            return body
+        }())
+        let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 16, kid: kid)
+        let moov = makeBox("moov", makeBox("trak", tkhd + tenc))
+
+        let firstTemplate = makeFragment(iv: iv1, ciphertext: ct1, dataOffset: 0)
+        let firstMoof = makeFragment(iv: iv1, ciphertext: ct1, dataOffset: Int32(firstTemplate.count + 8))
+        let firstMdat = makeBox("mdat", ct1)
+
+        let secondTemplate = makeFragment(iv: iv2, ciphertext: ct2, dataOffset: 0)
+        let secondPrefix = firstMoof.count + firstMdat.count
+        let secondMoof = makeFragment(
+            iv: iv2,
+            ciphertext: ct2,
+            dataOffset: Int32(secondPrefix + secondTemplate.count + 8)
+        )
+        let secondMdat = makeBox("mdat", ct2)
+
+        _ = try await processor.processMediaData(
+            moov,
+            sourceURL: URL(string: "https://example.test/init.mp4")!
+        )
+        let result = try await processor.processMediaData(
+            firstMoof + firstMdat + secondMoof + secondMdat,
+            sourceURL: URL(string: "https://example.test/full.mp4")!
+        )
+
+        let expected1 = Data("NM7-CENC-TEST-PAYLOAD-1234567890".utf8)
+        let expected2 = Data("NM7-CENC-SECOND-FRAGMENT-987654".utf8)
+
+        let firstPayloadOffset = firstMoof.count + 8
+        let secondPayloadOffset = secondPrefix + secondMoof.count + 8
+        XCTAssertEqual(result.subdata(in: firstPayloadOffset..<(firstPayloadOffset + expected1.count)), expected1)
+        XCTAssertEqual(result.subdata(in: secondPayloadOffset..<(secondPayloadOffset + expected2.count)), expected2)
+    }
+
+    private func makeFragment(iv: Data, ciphertext: Data, dataOffset: Int32) -> Data {
+        let tfhd = makeFullBoxBox(type: "tfhd", version: 0, flags: 0, body: Data([0, 0, 0, 1]))
+        let senc = makeFullBoxBox(type: "senc", version: 0, flags: 0, body: Data([0, 0, 0, 1]) + iv)
+        let trun = makeTRUN(dataOffset: dataOffset, sampleSize: UInt32(ciphertext.count))
+        return makeBox("moof", makeBox("traf", tfhd + trun + senc))
+    }
+
     private func makeTRUN(dataOffset: Int32, sampleSize: UInt32) -> Data {
         var body = Data([0, 0, 0, 1]) // sample_count = 1
         body.append(contentsOf: [
