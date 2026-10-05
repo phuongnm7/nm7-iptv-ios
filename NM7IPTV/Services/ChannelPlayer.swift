@@ -73,7 +73,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         let drm = DRMInfo.from(options: channel.options)
         var headers = channel.httpHeaders
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
-            headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
+            headers["User-Agent"] = "NM7-TV-iOS/1.0.71"
         }
 
         // DASH is handled by the native CENC/CBCS resource processor only for
@@ -109,7 +109,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
     private func startDASH(channel: Channel, drm: DRMInfo) {
         var headers = channel.httpHeaders
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
-            headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
+            headers["User-Agent"] = "NM7-TV-iOS/1.0.71"
         }
 
         let dash = UPlayer()
@@ -228,7 +228,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
             default: options["http-header"] = "\(name): \(value)"
             }
         }
-        if options["http-user-agent"] == nil { options["http-user-agent"] = "NM7-TV-iOS/1.0.69" }
+        if options["http-user-agent"] == nil { options["http-user-agent"] = "NM7-TV-iOS/1.0.71" }
         media.addOptions(options)
         engine = .vlc
         isLoading = true
