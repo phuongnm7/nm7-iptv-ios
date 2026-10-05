@@ -2,13 +2,11 @@ import AVFoundation
 import Foundation
 import MobileVLCKit
 import UIKit
+import UPlayer
 
 @MainActor
 final class ChannelPlayer: NSObject, ObservableObject {
-    enum Engine {
-        case avPlayer
-        case vlc
-    }
+    enum Engine { case avPlayer, dashClearKey, vlc }
 
     let player = AVPlayer()
     let vlcPlayer = VLCMediaPlayer()
@@ -16,12 +14,21 @@ final class ChannelPlayer: NSObject, ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
+    var activeAVPlayer: AVPlayer {
+        engine == .dashClearKey ? (dashPlayer?.avPlayer ?? player) : player
+    }
+
     private var itemObservation: NSKeyValueObservation?
     private var playerObservation: NSKeyValueObservation?
+    private var dashItemObservation: NSKeyValueObservation?
     private var fallbackTask: Task<Void, Never>?
     private var currentChannel: Channel?
     private weak var vlcDrawable: UIView?
     private var fairPlayLoader: FairPlayKeyLoader?
+    private var dashPlayer: UPlayer?
+    private var dashBridge: DashPlayerBridge?
+    private var clearKeySession: AVContentKeySession?
+    private var clearKeyDelegate: ClearKeyContentKeySession?
 
     override init() {
         super.init()
@@ -46,14 +53,14 @@ final class ChannelPlayer: NSObject, ObservableObject {
     }
 
     var isPlaying: Bool {
-        engine == .avPlayer ? player.timeControlStatus == .playing : vlcPlayer.isPlaying
+        engine == .vlc ? vlcPlayer.isPlaying : activeAVPlayer.timeControlStatus == .playing
     }
 
     func togglePlayPause() {
-        if engine == .avPlayer {
-            if player.timeControlStatus == .playing { player.pause() } else { player.play() }
+        if engine == .vlc {
+            vlcPlayer.isPlaying ? vlcPlayer.pause() : vlcPlayer.play()
         } else {
-            if vlcPlayer.isPlaying { vlcPlayer.pause() } else { vlcPlayer.play() }
+            activeAVPlayer.timeControlStatus == .playing ? activeAVPlayer.pause() : activeAVPlayer.play()
         }
     }
 
@@ -62,73 +69,143 @@ final class ChannelPlayer: NSObject, ObservableObject {
         currentChannel = channel
         errorMessage = nil
         isLoading = true
-        engine = .avPlayer
 
         let drm = DRMInfo.from(options: channel.options)
-        if drm.hasDRM && !drm.isNativeFairPlay {
-            showError("Nguồn này dùng DRM Android (Widevine/PlayReady/ClearKey). iPhone/iPad cần phiên HLS + FairPlay do nhà cung cấp hỗ trợ.")
-            return
-        }
-        if channel.isDASH {
-            showError("Nguồn DASH này không có đường phát native iOS. Hãy dùng HLS tương thích Apple.")
-            return
-        }
-
         var headers = channel.httpHeaders
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
             headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
         }
 
-        let asset = AVURLAsset(
-            url: channel.streamURL,
-            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        )
-
-        if drm.isNativeFairPlay {
-            guard let certificateURL = drm.certificateURL, let licenseURL = drm.licenseURL else {
-                showError("Kênh FairPlay thiếu certificate URL hoặc license URL.")
+        if channel.isDASH {
+            if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
+                showError("Kênh DASH dùng DRM không có CDM native trên iPhone/iPad. Chỉ ClearKey DASH được xử lý bằng engine iOS này.")
                 return
             }
-
-            let licenseHeaders = drm.licenseHeaders.merging(channel.httpHeaders) { license, _ in license }
-            let loader = FairPlayKeyLoader(
-                certificateURL: certificateURL,
-                licenseURL: licenseURL,
-                headers: licenseHeaders
-            )
-            fairPlayLoader = loader
-            let queue = DispatchQueue(label: "vn.phuongnm7.nm7iptv.fairplay.asset")
-            asset.resourceLoader.setDelegate(loader, queue: queue)
+            startDASH(channel: channel, drm: drm)
+            return
         }
+
+        if drm.system == .clearKey {
+            startNativeClearKey(channel: channel, headers: headers)
+            return
+        }
+
+        if drm.isNativeFairPlay {
+            startFairPlay(channel: channel, drm: drm, headers: headers)
+            return
+        }
+
+        startAVPlayer(channel: channel, headers: headers)
+    }
+
+    private func startDASH(channel: Channel, drm: DRMInfo) {
+        let dash = UPlayer()
+        let queue = UPlayerAssetProcessorsQueue()
+        queue.add(processor: UPlayerMetadataDownloader(id: "metadata"))
+        queue.add(processor: UPlayerMPDParser(id: "mpd-parser"))
+        queue.add(processor: UPlayerSegmentBaseHLSGenerator(id: "segment-base-hls"))
+        queue.add(processor: UPlayerMPDToMP4Resolver(id: "mp4-resolver"))
+        queue.add(processor: UPlayerHLSGenerator(id: "hls-generator"))
+        dash.assetProcessorsQueue = queue
+
+        let bridge = DashPlayerBridge(owner: self)
+        dashBridge = bridge
+        dash.delegate = bridge
+        dashPlayer = dash
+
+        let delegate = ClearKeyContentKeySession(drm: drm, headers: channel.httpHeaders) { [weak self] message in
+            Task { @MainActor in self?.showError(message) }
+        }
+        clearKeyDelegate = delegate
+        let session = AVContentKeySession(keySystem: .clearKey)
+        session.setDelegate(delegate, queue: DispatchQueue(label: "nm7.clearkey.dash"))
+        clearKeySession = session
+
+        dashItemObservation = dash.avPlayer.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+            guard let asset = player.currentItem?.asset as? AVURLAsset else { return }
+            Task { @MainActor in
+                self?.clearKeySession?.addContentKeyRecipient(asset)
+            }
+        }
+
+        engine = .dashClearKey
+        dash.play(url: channel.streamURL)
+    }
+
+    private func startNativeClearKey(channel: Channel, headers: [String: String]) {
+        let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let delegate = ClearKeyContentKeySession(drm: DRMInfo.from(options: channel.options), headers: headers) { [weak self] message in
+            Task { @MainActor in self?.showError(message) }
+        }
+        clearKeyDelegate = delegate
+        let session = AVContentKeySession(keySystem: .clearKey)
+        session.setDelegate(delegate, queue: DispatchQueue(label: "nm7.clearkey.hls"))
+        session.addContentKeyRecipient(asset)
+        clearKeySession = session
 
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
-        itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor in
-                guard let self, self.engine == .avPlayer else { return }
-                switch item.status {
-                case .readyToPlay:
-                    break
-                case .failed:
-                    if drm.hasDRM {
-                        self.showError("iOS không mở được phiên FairPlay của kênh. Kiểm tra certificate, license và quyền phát.")
-                    } else {
-                        self.startVLCFallback(for: channel)
-                    }
-                default:
-                    break
-                }
-            }
+        observe(item: item, drm: .none, channel: channel, allowVLCFallback: false)
+        engine = .avPlayer
+        player.replaceCurrentItem(with: item)
+        player.play()
+    }
+
+    private func startFairPlay(channel: Channel, drm: DRMInfo, headers: [String: String]) {
+        guard let certificateURL = drm.certificateURL, let licenseURL = drm.licenseURL else {
+            showError("Kênh FairPlay thiếu certificate URL hoặc license URL.")
+            return
         }
+        let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let loader = FairPlayKeyLoader(
+            certificateURL: certificateURL,
+            licenseURL: licenseURL,
+            headers: drm.licenseHeaders.merging(channel.httpHeaders) { a, _ in a }
+        )
+        fairPlayLoader = loader
+        asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "nm7.fairplay"))
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 8
+        observe(item: item, drm: drm, channel: channel, allowVLCFallback: false)
+        engine = .avPlayer
+        player.replaceCurrentItem(with: item)
+        player.play()
+    }
+
+    private func startAVPlayer(channel: Channel, headers: [String: String]) {
+        let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 8
+        observe(item: item, drm: .none, channel: channel, allowVLCFallback: true)
+        engine = .avPlayer
         player.replaceCurrentItem(with: item)
         player.play()
 
         fallbackTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
             guard !Task.isCancelled, let self, self.engine == .avPlayer,
-                  self.player.timeControlStatus != .playing,
-                  !drm.hasDRM else { return }
+                  self.player.timeControlStatus != .playing else { return }
             self.startVLCFallback(for: channel)
+        }
+    }
+
+    private func observe(item: AVPlayerItem, drm: DRMInfo, channel: Channel, allowVLCFallback: Bool) {
+        itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                switch item.status {
+                case .readyToPlay:
+                    self.isLoading = false
+                case .failed:
+                    if allowVLCFallback {
+                        self.startVLCFallback(for: channel)
+                    } else {
+                        self.showError(item.error?.localizedDescription ?? "Không mở được luồng.")
+                    }
+                default:
+                    break
+                }
+            }
         }
     }
 
@@ -140,26 +217,16 @@ final class ChannelPlayer: NSObject, ObservableObject {
         player.replaceCurrentItem(with: nil)
 
         let media = VLCMedia(url: channel.streamURL)
-        var options: [String: Any] = [
-            "network-caching": 1800,
-            "clock-jitter": 0,
-            "clock-synchro": 0
-        ]
+        var options: [String: Any] = ["network-caching": 1800, "clock-jitter": 0, "clock-synchro": 0]
         for (name, value) in channel.httpHeaders {
             switch name.lowercased() {
-            case "user-agent":
-                options["http-user-agent"] = value
-            case "referer":
-                options["http-referrer"] = value
-            case "cookie":
-                options["http-cookie"] = value
-            default:
-                options["http-header"] = "\(name): \(value)"
+            case "user-agent": options["http-user-agent"] = value
+            case "referer": options["http-referrer"] = value
+            case "cookie": options["http-cookie"] = value
+            default: options["http-header"] = "(name): (value)"
             }
         }
-        if options["http-user-agent"] == nil {
-            options["http-user-agent"] = "NM7-IPTV-iOS/0.3.0"
-        }
+        if options["http-user-agent"] == nil { options["http-user-agent"] = "NM7-TV-iOS/1.0.69" }
         media.addOptions(options)
         engine = .vlc
         isLoading = true
@@ -181,11 +248,42 @@ final class ChannelPlayer: NSObject, ObservableObject {
         fallbackTask?.cancel()
         fallbackTask = nil
         itemObservation = nil
+        dashItemObservation = nil
+        clearKeySession = nil
+        clearKeyDelegate = nil
+        fairPlayLoader = nil
+        dashBridge = nil
+        dashPlayer?.stop()
+        dashPlayer = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         vlcPlayer.stop()
-        fairPlayLoader = nil
     }
+}
+
+private final class DashPlayerBridge: NSObject, UPlayerDelegate {
+    weak var owner: ChannelPlayer?
+    weak var playerView: UPlayerView?
+
+    init(owner: ChannelPlayer) { self.owner = owner }
+
+    func didEventPlayerStart(source: UPlayerProtocol) {
+        Task { @MainActor in owner?.isLoading = true }
+    }
+    func didEventPlayerPlay(source: UPlayerProtocol) {
+        Task { @MainActor in owner?.isLoading = false }
+    }
+    func didEventPlayerStop(source: UPlayerProtocol, error: Error?) {
+        Task { @MainActor in
+            owner?.isLoading = false
+            if let error { owner?.showError("DASH/ClearKey: \(error.localizedDescription)") }
+        }
+    }
+    func didEventPlayerChange(source: UPlayerProtocol, isPaused: Bool) {}
+    func didEventPlayerChange(source: UPlayerProtocol, isMuted: Bool) {}
+    func didEventPlayerChange(source: UPlayerProtocol, rate: Double) {}
+    func didEventPlayerChange(source: UPlayerProtocol, playingTime: TimeInterval) {}
+    func didEventPlayerChange(source: UPlayerProtocol, duration: TimeInterval) {}
 }
 
 extension ChannelPlayer: VLCMediaPlayerDelegate {
@@ -193,21 +291,13 @@ extension ChannelPlayer: VLCMediaPlayerDelegate {
         Task { @MainActor [weak self] in
             guard let self, self.engine == .vlc else { return }
             switch self.vlcPlayer.state {
-            case .playing:
-                self.isLoading = false
-                self.errorMessage = nil
-            case .buffering, .opening:
-                self.isLoading = true
-            case .error:
-                self.isLoading = false
-                self.errorMessage = "AVPlayer và VLC đều không mở được luồng này. Kênh có thể đang ngoại tuyến hoặc dùng DRM."
-            case .ended, .stopped:
-                self.isLoading = false
-            default:
-                break
+            case .playing: self.isLoading = false; self.errorMessage = nil
+            case .buffering, .opening: self.isLoading = true
+            case .error: self.isLoading = false; self.errorMessage = "Không mở được luồng bằng AVPlayer/VLC."
+            case .ended, .stopped: self.isLoading = false
+            default: break
             }
         }
     }
-
     nonisolated func mediaPlayerTimeChanged(_ aNotification: Notification!) {}
 }
