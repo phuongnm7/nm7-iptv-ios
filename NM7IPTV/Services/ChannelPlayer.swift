@@ -76,11 +76,12 @@ final class ChannelPlayer: NSObject, ObservableObject {
             headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
         }
 
+        if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
+            showError("Nguồn dùng DRM không được iOS engine hỗ trợ trực tiếp. Chỉ FairPlay hoặc ClearKey được xử lý khi playlist cung cấp đầy đủ thông tin.")
+            return
+        }
+
         if channel.isDASH {
-            if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
-                showError("Kênh DASH dùng DRM không có CDM native trên iPhone/iPad. Chỉ ClearKey DASH được xử lý bằng engine iOS này.")
-                return
-            }
             startDASH(channel: channel, drm: drm)
             return
         }
