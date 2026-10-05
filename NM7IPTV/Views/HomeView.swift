@@ -163,10 +163,8 @@ struct HomeView: View {
         verticalProxy: ScrollViewProxy
     ) -> some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(
-                Array(displayedGroups.enumerated()),
-                id: .offset
-            ) { rowIndex, group in
+            ForEach(displayedGroups.indices, id: .self) { rowIndex in
+                let group = displayedGroups[rowIndex]
                 channelRow(
                     group: group,
                     channels: channels(for: group),
@@ -417,7 +415,7 @@ private final class KeyCommandView: UIView {
                 action: #selector(handleKey(_:))
             ),
             UIKeyCommand(
-                input: UIKeyCommand.inputReturn,
+                input: "\r",
                 modifierFlags: [],
                 action: #selector(handleKey(_:))
             ),
@@ -439,7 +437,7 @@ private final class KeyCommandView: UIView {
             handlers.onUp()
         case UIKeyCommand.inputDownArrow:
             handlers.onDown()
-        case UIKeyCommand.inputReturn:
+        case "\r":
             handlers.onSelect()
         case UIKeyCommand.inputEscape:
             handlers.onBack()
