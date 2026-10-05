@@ -20,6 +20,16 @@ struct SourcesView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Nhập playlist") {
+                    Button {
+                        showingImporter = true
+                    } label: {
+                        Label("Nhập tệp M3U từ Tệp", systemImage: "doc.badge.plus")
+                    }
+                    Text("Chọn tệp .m3u hoặc .m3u8 đã lưu trên iPhone.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Nguồn tích hợp") {
                     sourceRow(store.defaultSource, subtitle: "Nguồn mặc định tích hợp sẵn • URL được ẩn")
                 }
@@ -43,11 +53,10 @@ struct SourcesView: View {
             }
             .navigationTitle("Quản lý nguồn")
             .toolbar {
-                Menu {
-                    Button("Thêm URL", systemImage: "link") { showingAdd = true }
-                    Button("Nhập tệp M3U", systemImage: "doc.badge.plus") { showingImporter = true }
+                Button {
+                    showingAdd = true
                 } label: {
-                    Label("Thêm nguồn", systemImage: "plus")
+                    Label("Thêm URL", systemImage: "plus")
                 }
             }
             .sheet(isPresented: $showingAdd) {
