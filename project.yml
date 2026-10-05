@@ -19,6 +19,8 @@ targets:
       path: NM7IPTV/Info.plist
       properties:
         CFBundleDisplayName: NM7 TV
+        CFBundleShortVersionString: "1.0.69"
+        CFBundleVersion: "69"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
