@@ -45,7 +45,7 @@ targets:
         NSMicrophoneUsageDescription: NM7 TV dùng micro để tìm và mở kênh bằng giọng nói.
         NSSpeechRecognitionUsageDescription: NM7 TV dùng nhận dạng giọng nói để tìm và mở kênh.
         CFBundleIconFiles:
-          - nm7_app_icon
+          - nm7_tv_launcher
         CFBundleIcons:
           CFBundlePrimaryIcon:
             CFBundleIconFiles:
