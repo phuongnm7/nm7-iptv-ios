@@ -273,7 +273,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                     &sample,
                     key: key,
                     iv: encryption.entries[index].iv,
-                    subsamples: entries[index].subsamples
+                    subsamples: encryption.entries[index].subsamples
                 )
                 output.replaceSubrange(sampleOffset..<(sampleOffset + size), with: sample)
                 sampleOffset += size
