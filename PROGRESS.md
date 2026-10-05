@@ -1,5 +1,34 @@
 # NM7 IPTV iOS — tiến độ dự án
 
+## Mốc mới — iOS 1.0.70 DRM + Web UI parity (2026-10-05)
+
+### Trạng thái
+
+- Nhánh xử lý: `fix/ios-1.0.70-drm-v3-web-ui`.
+- Nền: `release/ios-1.0.69-final-drm-v2`.
+- Mục tiêu lần này: sửa pipeline DASH/ClearKey runtime, đưa VTV dự phòng về nguồn HLS chạy được trên iOS khi playlist có Widevine, và làm giao diện iPad/iPhone theo đúng bố cục web NM7 TV.
+- Không đánh dấu DRM hoàn thành chỉ vì CI xanh. Kiểm thử thiết bị thật vẫn là tiêu chí cuối cùng.
+
+### Đã xử lý trong mã nguồn
+
+1. Giao diện Home đã bỏ sidebar/header/chip bar khỏi bề mặt chính; home chạy toàn màn hình như web.
+2. Kích thước hàng/kênh trên iPad được đưa về nhịp gần web: card 138×76, logo 54, khoảng cách 4 và tiêu đề nhóm 18.
+3. Sidebar vẫn có thể mở bằng thao tác vuốt từ mép trái, nên không mất các chức năng nguồn/cài đặt.
+4. Hình nền ưu tiên đúng asset `/assets/nm7-default-background.webp` của web và cache lại; vẫn có local fallback khi mạng chưa sẵn sàng.
+5. Playlist parser nhận diện nhóm “Dự phòng” và đổi các VTV2/VTV3/VTV7/VTV9/VTV10 Widevine backup sang bản HLS không DRM tương ứng đã tồn tại trong playlist. Nhóm hiển thị là “VTV dự phòng”.
+6. Cache playlist được nâng version để không dùng dữ liệu cũ của 1.0.69.
+7. DASH ClearKey được route trước nhánh từ chối Widevine/PlayReady; Widevine/PlayReady vẫn bị từ chối rõ ràng thay vì đưa vào CENC engine.
+8. CENC fragment parser xử lý nhiều `trun` trong một `traf`, xử lý `default-sample-flags` trong `tfhd`, và báo lỗi khi media fragment tới trước trạng thái `tenc` thay vì âm thầm trả dữ liệu mã hóa.
+9. Bổ sung regression test cho VTV backup và các trường hợp CENC nhiều-trun/`tfhd`.
+
+### Giới hạn kiểm chứng
+
+- Chưa có bằng chứng runtime trên iPhone/iPad thật trong môi trường hiện tại; CI chỉ xác nhận build/test/package.
+- Các kênh Widevine backup không thể biến thành ClearKey bằng thay đổi parser; bản 1.0.70 chỉ chuyển các VTV backup có bản HLS không DRM tương ứng sang nguồn HLS đó.
+- ClearKey DASH thực tế vẫn phải được kiểm tra trên thiết bị thật với MPD/segment/license đang hoạt động.
+
+# NM7 IPTV iOS — tiến độ dự án
+
 ## Mốc hiện tại — iOS 1.0.69 Android baseline (2026-10-05)
 
 ### Trạng thái thực tế
