@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @ObservedObject var model: AppViewModel
@@ -65,11 +66,58 @@ struct HomeView: View {
                 .accessibilityLabel("Mở menu")
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle())
-            .focusable()
-            .onMoveCommand { direction in
-                move(direction)
+            .overlay(alignment: .bottomTrailing) {
+                KeyboardCommandHost(
+                    onLeft: {
+                        if focusColumn == 0 {
+                            onOpenMenu()
+                        } else {
+                            focusColumn -= 1
+                            applyFocusedChannel()
+                        }
+                    },
+                    onRight: {
+                        let current = currentChannels()
+                        guard !current.isEmpty else { return }
+                        focusColumn = min(
+                            focusColumn + 1,
+                            current.count - 1
+                        )
+                        applyFocusedChannel()
+                    },
+                    onUp: {
+                        guard focusRow > 0 else { return }
+                        focusRow -= 1
+                        focusColumn = min(
+                            focusColumn,
+                            max(0, currentChannels().count - 1)
+                        )
+                        applyFocusedChannel()
+                    },
+                    onDown: {
+                        guard focusRow < displayedGroups.count - 1 else {
+                            return
+                        }
+                        focusRow += 1
+                        focusColumn = min(
+                            focusColumn,
+                            max(0, currentChannels().count - 1)
+                        )
+                        applyFocusedChannel()
+                    },
+                    onSelect: {
+                        guard let channel = currentChannels()[safe: focusColumn] else {
+                            return
+                        }
+                        model.play(channel)
+                    },
+                    onBack: onOpenMenu
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .allowsHitTesting(false)
             }
+            .contentShape(Rectangle())
             .onAppear {
                 scheduleFocus()
             }
@@ -117,7 +165,7 @@ struct HomeView: View {
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(
                 Array(displayedGroups.enumerated()),
-                id: .element
+                id: .offset
             ) { rowIndex, group in
                 channelRow(
                     group: group,
@@ -168,6 +216,7 @@ struct HomeView: View {
                                 isPlaying: model.selectedChannel?.id == channel.id,
                                 metrics: metrics,
                                 onPlay: {
+                                    focusedChannelID = channel.id
                                     model.play(channel)
                                 },
                                 onFavorite: {
@@ -271,9 +320,16 @@ struct HomeView: View {
             max(0, current.count - 1)
         )
 
-        if let channel = current[safe: focusColumn] {
-            focusedChannelID = channel.id
+        applyFocusedChannel()
+    }
+
+    private func applyFocusedChannel() {
+        let current = currentChannels()
+        guard let channel = current[safe: focusColumn] else {
+            focusedChannelID = nil
+            return
         }
+        focusedChannelID = channel.id
     }
 
     private func scheduleFocus() {
@@ -281,56 +337,125 @@ struct HomeView: View {
             resetFocus()
         }
     }
+}
 
-    private func move(_ direction: MoveCommandDirection) {
-        guard !displayedGroups.isEmpty else {
-            return
+private struct KeyboardCommandHost: UIViewRepresentable {
+    let onLeft: () -> Void
+    let onRight: () -> Void
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onSelect: () -> Void
+    let onBack: () -> Void
+
+    func makeUIView(context: Context) -> KeyCommandView {
+        let view = KeyCommandView()
+        view.handlers = HandlerSet(
+            onLeft: onLeft,
+            onRight: onRight,
+            onUp: onUp,
+            onDown: onDown,
+            onSelect: onSelect,
+            onBack: onBack
+        )
+        DispatchQueue.main.async {
+            view.becomeFirstResponder()
         }
-
-        switch direction {
-        case .left:
-            if focusColumn == 0 {
-                onOpenMenu()
-                return
-            }
-            focusColumn -= 1
-
-        case .right:
-            let current = currentChannels()
-            guard !current.isEmpty else {
-                return
-            }
-            focusColumn = min(
-                focusColumn + 1,
-                current.count - 1
-            )
-
-        case .up:
-            guard focusRow > 0 else {
-                return
-            }
-            focusRow -= 1
-            focusColumn = min(
-                focusColumn,
-                max(0, currentChannels().count - 1)
-            )
-
-        case .down:
-            guard focusRow < displayedGroups.count - 1 else {
-                return
-            }
-            focusRow += 1
-            focusColumn = min(
-                focusColumn,
-                max(0, currentChannels().count - 1)
-            )
-
-        @unknown default:
-            return
-        }
-
-        resetFocus()
+        return view
     }
+
+    func updateUIView(_ uiView: KeyCommandView, context: Context) {
+        uiView.handlers = HandlerSet(
+            onLeft: onLeft,
+            onRight: onRight,
+            onUp: onUp,
+            onDown: onDown,
+            onSelect: onSelect,
+            onBack: onBack
+        )
+        if !uiView.isFirstResponder {
+            DispatchQueue.main.async {
+                uiView.becomeFirstResponder()
+            }
+        }
+    }
+}
+
+private final class KeyCommandView: UIView {
+    var handlers = HandlerSet(
+        onLeft: {},
+        onRight: {},
+        onUp: {},
+        onDown: {},
+        onSelect: {},
+        onBack: {}
+    )
+
+    override var canBecomeFirstResponder: Bool {
+        true
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(
+                input: UIKeyCommand.inputLeftArrow,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            ),
+            UIKeyCommand(
+                input: UIKeyCommand.inputRightArrow,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            ),
+            UIKeyCommand(
+                input: UIKeyCommand.inputUpArrow,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            ),
+            UIKeyCommand(
+                input: UIKeyCommand.inputDownArrow,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            ),
+            UIKeyCommand(
+                input: UIKeyCommand.inputReturn,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            ),
+            UIKeyCommand(
+                input: UIKeyCommand.inputEscape,
+                modifierFlags: [],
+                action: #selector(handleKey(_:))
+            )
+        ]
+    }
+
+    @objc private func handleKey(_ command: UIKeyCommand) {
+        switch command.input {
+        case UIKeyCommand.inputLeftArrow:
+            handlers.onLeft()
+        case UIKeyCommand.inputRightArrow:
+            handlers.onRight()
+        case UIKeyCommand.inputUpArrow:
+            handlers.onUp()
+        case UIKeyCommand.inputDownArrow:
+            handlers.onDown()
+        case UIKeyCommand.inputReturn:
+            handlers.onSelect()
+        case UIKeyCommand.inputEscape:
+            handlers.onBack()
+        default:
+            break
+        }
+    }
+}
+
+private struct HandlerSet {
+    let onLeft: () -> Void
+    let onRight: () -> Void
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onSelect: () -> Void
+    let onBack: () -> Void
 }
 
 private extension Array {
