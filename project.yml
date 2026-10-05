@@ -3,6 +3,11 @@ options:
   bundleIdPrefix: vn.phuongnm7
   deploymentTarget:
     iOS: "16.0"
+packages:
+  UPlayer:
+    url: https://github.com/MaximKomlev/UPlayer.git
+    branch: develop
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -39,11 +44,20 @@ targets:
           NSAllowsArbitraryLoads: true
         NSMicrophoneUsageDescription: NM7 TV dùng micro để tìm và mở kênh bằng giọng nói.
         NSSpeechRecognitionUsageDescription: NM7 TV dùng nhận dạng giọng nói để tìm và mở kênh.
+        CFBundleIconFiles:
+          - nm7_app_icon
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - nm7_app_icon
+            CFBundleIconName: nm7_app_icon
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: UPlayer
   NM7IPTVTests:
     type: bundle.unit-test
     platform: iOS
