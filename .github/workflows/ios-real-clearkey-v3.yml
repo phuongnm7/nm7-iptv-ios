@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nm7-ios-real-clearkey-v3
+  group: nm7-ios-sports-v4
   cancel-in-progress: true
 
 jobs:
