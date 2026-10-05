@@ -99,3 +99,22 @@ final class M3UParserTests: XCTestCase {
         XCTAssertTrue(backup.options.contains("#NM7-IOS-VTV-BACKUP-HLS"))
     }
 }
+
+
+    func testDirectSportsHTTPStreamsPreferVLC() {
+        let text = """
+        #EXTM3U
+        #EXTINF:-1 group-title="Thể thao",SPORT EVENT 1
+        http://mag.tivi-one-iptv.net:80/play/live.php?stream=1313248&extension=ts&play_token=abc
+        #EXTINF:-1 group-title="Thể thao",SPORT EVENT 2
+        http://zazaint.com:80/MAGU52TLAM/SAAk0NZH71/17281
+        #EXTINF:-1 group-title="Thể thao",SPORT EVENT 3
+        https://cdn.example.com/live/channel.m3u8
+        """
+        let parsed = M3UParser.parse(text)
+        XCTAssertEqual(parsed.channels.count, 3)
+        XCTAssertTrue(parsed.channels[0].prefersVLC)
+        XCTAssertTrue(parsed.channels[1].prefersVLC)
+        XCTAssertFalse(parsed.channels[2].prefersVLC)
+        XCTAssertTrue(parsed.channels[2].isHLS)
+    }
