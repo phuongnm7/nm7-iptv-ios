@@ -15,6 +15,7 @@ targets:
     platform: iOS
     sources:
       - NM7IPTV
+      - Vendor/UPlayer
     info:
       path: NM7IPTV/Info.plist
       properties:
