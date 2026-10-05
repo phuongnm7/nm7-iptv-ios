@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv-smoke
           .venv-smoke/bin/python -m pip install --disable-pip-version-check -q cryptography
-          .venv-smoke/bin/python tools/real_clearkey_smoke_axinom.py
+          .venv-smoke/bin/python tools/real_clearkey_segmentbase_smoke.py
 
       - name: Prepare bundled visual assets
         run: |
