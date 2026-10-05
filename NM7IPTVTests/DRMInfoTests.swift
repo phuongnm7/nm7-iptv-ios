@@ -50,4 +50,14 @@ final class DRMInfoTests: XCTestCase {
         XCTAssertNil(info.licenseURL)
     }
 
+
+    func testClearKeyNamedPairMatchesAndroidFormat() {
+        let pairs = ClearKeyContentKeySession.parsePairs(
+            "kid=00112233445566778899aabbccddeeff&key=ffeeddccbbaa99887766554433221100"
+        )
+
+        let kid = Data([0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff])
+        XCTAssertEqual(pairs[ClearKeyContentKeySession.base64URL(kid)]?.count, 16)
+    }
+
 }
