@@ -56,7 +56,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
            let jwk = try? ClearKeyContentKeySession.parseJWK(data) {
             for (kidString, key) in jwk {
                 if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
-                    keys[kid.base64EncodedString()] = key
+                    keys[base64URL(kid)] = key
                 }
             }
         }
