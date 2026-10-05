@@ -35,7 +35,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = true
         vlcPlayer.delegate = self
         playerObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self, self.engine == .avPlayer else { return }
                 if player.timeControlStatus == .playing {
                     self.isLoading = false
@@ -186,7 +186,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
 
     private func observe(item: AVPlayerItem, channel: Channel, allowVLCFallback: Bool) {
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 switch item.status {
                 case .readyToPlay:
