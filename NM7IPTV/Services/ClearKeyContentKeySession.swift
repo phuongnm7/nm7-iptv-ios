@@ -95,10 +95,34 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
     }
 
     static func parsePairs(_ value: String) -> [String: Data] {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
         var pairs: [String: Data] = [:]
-        for part in value.split(separator: ",") {
+
+        // Android 1.0.69 accepts provider "named pair" syntax:
+        // kid=...&key=... (also k=...), optionally repeated with ; or |.
+        if clean.localizedCaseInsensitiveContains("kid=") {
+            var currentKID: Data?
+            for field in clean.split(whereSeparator: { $0 == "&" || $0 == ";" || $0 == "|" || $0 == "," }) {
+                let pieces = field.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pieces.count == 2 else { continue }
+                let name = pieces[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let raw = pieces[1].removingPercentEncoding ?? pieces[1]
+                if name == "kid" {
+                    currentKID = decodeKeyID(raw)
+                } else if name == "key" || name == "k",
+                          let kid = currentKID,
+                          let key = decodeKey(raw) {
+                    pairs[kid.base64URLEncodedString] = key
+                }
+            }
+            if !pairs.isEmpty { return pairs }
+        }
+
+        for part in clean.split(separator: ",") {
             let fields = part.split(separator: ":", maxSplits: 1).map(String.init)
-            guard fields.count == 2, let kid = decodeKeyID(fields[0]), let key = decodeKey(fields[1]) else { continue }
+            guard fields.count == 2,
+                  let kid = decodeKeyID(fields[0]),
+                  let key = decodeKey(fields[1]) else { continue }
             pairs[kid.base64URLEncodedString] = key
         }
         return pairs
