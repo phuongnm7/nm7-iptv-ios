@@ -2,7 +2,7 @@ import Foundation
 import CommonCrypto
 
 final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
-    private struct TrackInfo {
+    struct TrackInfo {
         let kid: Data
         let ivSize: Int
         let constantIV: Data?
@@ -12,7 +12,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let skipBlock: Int
     }
 
-    private struct Box {
+    struct Box {
         let offset: Int
         let size: Int
         let header: Int
@@ -21,12 +21,12 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         var contentStart: Int { offset + header }
     }
 
-    private struct SENCEntry {
+    struct SENCEntry {
         let iv: Data
         let subsamples: [(clear: Int, encrypted: Int)]?
     }
 
-    private struct SENCResult {
+    struct SENCResult {
         let entries: [SENCEntry]
         let kid: Data
         let ivSize: Int
