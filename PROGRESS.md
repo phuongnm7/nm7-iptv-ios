@@ -1,161 +1,137 @@
 # NM7 IPTV iOS — tiến độ dự án
 
-## Mốc mới — iOS 1.0.70 DRM + Web UI parity (2026-10-05)
+## 2026-10-05 — Mốc 1.0.72: SPORTS VLC + REAL CLEARKEY
 
-### Trạng thái
+### Trạng thái hiện tại
 
-- Nhánh xử lý: `fix/ios-1.0.70-drm-v3-web-ui`.
-- Nền: `release/ios-1.0.69-final-drm-v2`.
-- Mục tiêu lần này: sửa pipeline DASH/ClearKey runtime, đưa VTV dự phòng về nguồn HLS chạy được trên iOS khi playlist có Widevine, và làm giao diện iPad/iPhone theo đúng bố cục web NM7 TV.
-- Không đánh dấu DRM hoàn thành chỉ vì CI xanh. Kiểm thử thiết bị thật vẫn là tiêu chí cuối cùng.
+- Repository: `phuongnm7/nm7-iptv-ios`
+- Branch: `fix/ios-1.0.71-real-clearkey-navigation`
+- Version source: **1.0.72 / build 72**
+- Latest commit: `91da7a383c4530ad7376366a91416197aa088da0`
+- Workflow: **NM7 IPTV iOS 1.0.72 SPORTS VLC + CLEARKEY v4**
+- Mục tiêu: xử lý triệt để nhóm Thể thao, adaptive navigation iPhone/iPad và xác thực ClearKey bằng dữ liệu thật.
 
-### Đã xử lý trong mã nguồn
+### Đã làm
 
-1. Giao diện Home đã bỏ sidebar/header/chip bar khỏi bề mặt chính; home chạy toàn màn hình như web.
-2. Kích thước hàng/kênh trên iPad được đưa về nhịp gần web: card 138×76, logo 54, khoảng cách 4 và tiêu đề nhóm 18.
-3. Sidebar vẫn có thể mở bằng thao tác vuốt từ mép trái, nên không mất các chức năng nguồn/cài đặt.
-4. Hình nền ưu tiên đúng asset `/assets/nm7-default-background.webp` của web và cache lại; vẫn có local fallback khi mạng chưa sẵn sàng.
-5. Playlist parser nhận diện nhóm “Dự phòng” và đổi các VTV2/VTV3/VTV7/VTV9/VTV10 Widevine backup sang bản HLS không DRM tương ứng đã tồn tại trong playlist. Nhóm hiển thị là “VTV dự phòng”.
-6. Cache playlist được nâng version để không dùng dữ liệu cũ của 1.0.69.
-7. DASH ClearKey được route trước nhánh từ chối Widevine/PlayReady; Widevine/PlayReady vẫn bị từ chối rõ ràng thay vì đưa vào CENC engine.
-8. CENC fragment parser xử lý nhiều `trun` trong một `traf`, xử lý `default-sample-flags` trong `tfhd`, và báo lỗi khi media fragment tới trước trạng thái `tenc` thay vì âm thầm trả dữ liệu mã hóa.
-9. Bổ sung regression test cho VTV backup và các trường hợp CENC nhiều-trun/`tfhd`.
+#### 1. Khoanh vùng lỗi nhóm Thể thao
 
-### Giới hạn kiểm chứng
+Không phải toàn bộ kênh thể thao là DASH/DRM. Playlist thể thao hiện chứa nhiều luồng HTTP IPTV/direct MPEG-TS, trong đó URL có thể **không có đuôi `.ts`**. Nếu cứ đưa tất cả vào AVPlayer rồi mới chờ fallback thì trên iOS dễ gặp màn hình đen/stall.
 
-- Chưa có bằng chứng runtime trên iPhone/iPad thật trong môi trường hiện tại; CI chỉ xác nhận build/test/package.
-- Các kênh Widevine backup không thể biến thành ClearKey bằng thay đổi parser; bản 1.0.70 chỉ chuyển các VTV backup có bản HLS không DRM tương ứng sang nguồn HLS đó.
-- ClearKey DASH thực tế vẫn phải được kiểm tra trên thiết bị thật với MPD/segment/license đang hoạt động.
+Đã chuyển quyết định engine lên trước khi tạo AVPlayer item:
 
-# NM7 IPTV iOS — tiến độ dự án
+- HLS → AVPlayer.
+- DASH/DRM → custom DASH/CENC hoặc FairPlay tương ứng.
+- HTTP/HTTPS direct IPTV → MobileVLCKit.
+- `.ts`, `play/live.php`, RTSP, RTMP, UDP, SRT → ưu tiên VLC.
+- Truyền User-Agent, Referer, Cookie khi playlist có khai báo.
+- VLC bật reconnect/continuous HTTP và network caching thấp hơn đường fallback cũ.
 
-## Mốc hiện tại — iOS 1.0.69 Android baseline (2026-10-05)
+#### 2. ClearKey CENC
 
-### Trạng thái thực tế
+Đã có smoke test với MPD/segment ClearKey thật trên CI và bước **Real public ClearKey DASH/CENC smoke = PASS**.
 
-- Dự án iOS: phuongnm7/nm7-iptv-ios.
-- Nhánh làm việc: release/ios-1.0.69-final-drm-v2.
-- Nền tham chiếu: NM7 TV Android 1.0.69.
-- Android baseline commit: f79fc06009f20e0ac3a5859c0abcfd6ce70a6763.
-- Mục tiêu: chuyển chức năng và hành vi cốt lõi của Android 1.0.69 sang app native cho iPhone + iPad.
-- Không tiếp tục sửa DRM Safari/web trong nhánh iOS này.
-- iOS Marketing Version: 1.0.69.
-- iOS Bundle Version: 69.
-- Deployment target: iOS/iPadOS 16.0+.
-- Repository public để GitHub-hosted macOS runner chạy build.
+Các sửa parser trước đó gồm:
+- `tenc` / KID / IV size / constant IV.
+- `trex.default_sample_size` đúng offset.
+- absolute moof/fragment base offset.
+- `trun`, `senc`, `saiz/saio`.
+- nhiều `moof`.
+- CENC/CBCS handling.
+- merge license headers với channel headers.
 
-### Điều quan trọng cần ghi rõ
+### CI mới nhất
 
-**BẢN 1.0.69 HIỆN CHƯA HOÀN THÀNH.**
+Run: **37321133110**
 
-Người dùng đã kiểm tra thực tế và phản hồi rằng các lỗi trước đây vẫn còn nguyên. Vì vậy không được lấy trạng thái CI xanh để kết luận app đã hoạt động đúng.
+Tại thời điểm cập nhật:
+- Install build tools: PASS
+- Real public ClearKey DASH/CENC smoke: PASS
+- Prepare bundled visual assets: PASS
+- Generate workspace: PASS
+- Simulator build: đang chạy
 
-Các vấn đề runtime đang còn:
+Run trước đó: **37320745359 — FAILURE**.
 
-1. DASH/ClearKey DRM chưa phát ổn định trên iPhone/iPad thật.
-2. Chưa có bằng chứng end-to-end đáng tin cậy cho luồng MPD → HLS/fMP4 → CENC/CBCS decrypt → AVPlayer → video thực tế trên thiết bị thật.
-3. Một số stream DRM/định dạng từng báo lỗi chưa được xác nhận đã xử lý dứt điểm.
-4. Vẫn phải tiếp tục đối chiếu giao diện với Android TV 1.0.69, đặc biệt vùng player, điều khiển và hình nền.
-5. Không được coi build thành công hoặc unit test pass là DRM đã hoạt động.
+Nguyên nhân run trước đã xác định chính xác:
+- `ChannelPlayer.swift:106` thiếu `shouldPreferVLC`
+- `ChannelPlayer.swift:107` thiếu `startVLC`
 
-### CI hiện tại
+Đó là lỗi build do các commit sửa routing được tách ra không đồng bộ. Source hiện tại đã bổ sung đầy đủ hai helper và workflow đã được sửa lại branch/build-number.
 
-- Commit source mới nhất trước cập nhật tài liệu: 1f481d5833cbcf3256c716afb00d69ac659fef4e.
-- GitHub Actions run #15 (37296937858) — SUCCESS toàn bộ: Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
-- Run #14 (37296028753) FAIL tại CENC unit test với lỗi "trun thiếu sample size".
-- Nguyên nhân run #14 đã được xác định: các parser FullBox trong CENC bỏ qua sai phần FullBox header khi tính cursor.
-- Commit sửa parser: 84c769b0cdd14f46d190213dc3bf39d43475dc6f.
-- Run #15 sau đó đã xanh sau khi sửa test data offset, nhưng run xanh này chỉ chứng minh CI/build/test suite hiện tại pass, chưa chứng minh stream thực tế trên iPhone/iPad đã phát.
-- Cập nhật README sau mốc này được commit tại: 5bb7cc90054b378cc5f9059abec5930c8027e707.
+### 3. UI và điều hướng
 
-### Những thay đổi kỹ thuật đã triển khai
+Đã triển khai:
+- tự nhận diện iPhone/iPad;
+- layout adaptive;
+- edge swipe để mở/đóng sidebar;
+- focus channel;
+- điều hướng trái/phải/lên/xuống;
+- Return để mở/phát;
+- Escape để đóng;
+- khi đang ở channel đầu hàng, đi trái có thể mở menu;
+- PlayerScreen hỗ trợ panel nhóm/kênh trên iPad và chuyển kênh bằng swipe.
 
-#### CENC / ClearKey
+### 4. Playlist thể thao
 
-- Sửa đọc tenc để lấy đúng isProtected, default_Per_Sample_IV_Size và default_KID.
-- Sửa vị trí đọc constant IV khi IV size bằng 0.
-- Chuẩn hóa KID sang Base64URL khi cache ClearKey và không tự ý thay KID khi license trả nhiều key.
-- Hỗ trợ ClearKey inline KID:KEY.
-- Hỗ trợ ClearKey dạng named pair kid=...&key=....
-- Hỗ trợ JWK ClearKey.
-- Hỗ trợ senc override-track-encryption-parameters.
-- Hỗ trợ saiz/saio khi senc không có.
-- Hỗ trợ xử lý nhiều moof trong cùng SegmentBase resource.
-- Có nhánh xử lý CENC/CBCS trong custom media resource processor.
-- MPDToMP4Resolver không được phép bỏ qua CENC media resource processor.
-- Resource loader đã có route riêng cho cenc-init / cenc-segment.
-- Processor error được đẩy lên player thay vì để UI loading vô hạn.
+Repo playlist `phuongnm7/Iptv-phuongnm7` có workflow tự động **Update sports auto playlist (multi-source)**.
 
-#### Player/UI
+Run gần nhất:
+- Run: `37319902023`
+- Kết quả: **SUCCESS**
+- Source A: 384 raw / 381 còn hiệu lực
+- Source B: 1 undated
+- Source C: 80 raw nhưng 80 đã quá hạn theo rule 180 phút
+- Source D (`sources/sport-selected.m3u`): 98 undated, được giữ lại
 
-- Đã bỏ ProgressView spinner cố định phủ video.
-- Đã đưa microphone / fullscreen / favorite vào vùng video pane để tránh chồng lên selector nhóm.
-- Hình nền mặc định được đóng gói từ nm7_default_background_new.webp theo Android source-of-truth.
+Điểm quan trọng: workflow playlist đã chạy thành công, nên lỗi “tất cả nhóm thể thao không xem được” phải được xử lý tiếp ở **engine phát của iOS và/hoặc từng loại URL**, không được chỉ nhìn vào bước build playlist.
 
-### Unit test hiện có
+## Việc còn lại — tiêu chí hoàn thành
 
-- CENC fragment decrypt với inline ClearKey.
-- Nhiều moof trong một SegmentBase resource.
-- tenc version 0.
-- tenc version 1.
-- constant IV.
-- malformed tenc.
-- ClearKey legacy / named-pair / JWK metadata.
-- M3U/DRM metadata và channel logo regression.
+### P0 — bắt buộc
+1. Simulator build PASS.
+2. Unit tests PASS.
+3. Device Release build PASS.
+4. Package IPA PASS.
+5. Kiểm tra IPA chứa đúng assets và version 1.0.72/build 72.
+6. Kiểm tra trực tiếp các URL thể thao thuộc các loại:
+   - HLS
+   - DASH
+   - HTTP MPEG-TS/direct IPTV
+   - URL có User-Agent/Referer/Cookie
+7. Kiểm tra ClearKey trên stream thật.
+8. Chỉ sau đó mới đánh dấu **DONE**.
 
-### Giới hạn của kết quả test hiện tại
+### Không được làm
 
-Test CENC hiện đang dùng synthetic test vector tự tạo trong XCTest. Điều này xác nhận thuật toán xử lý dữ liệu CENC theo vector đã dựng, nhưng không thay thế kiểm thử với một MPD/fragment/license thật mà iPhone/iPad đang gặp.
+- Không tuyên bố “đã sửa xong” chỉ vì CI xanh.
+- Không thay tất cả stream thể thao bằng một URL khác chỉ để làm cho có hình.
+- Không bỏ qua header/token của nguồn.
+- Không biến Widevine/PlayReady thành ClearKey bằng cách đoán.
+- Không phát hành IPA trước khi device build/package pass.
 
-Do phản hồi thực tế cho biết lỗi cũ vẫn còn, bước tiếp theo phải tập trung vào:
+## Lịch sử
 
-- lấy đúng MPD thực tế đang lỗi;
-- tải init segment + media segment thực tế;
-- đối chiếu tenc, moof/traf/tfhd/trun/senc/saiz/saio, sample offset và scheme;
-- xác định AVPlayer đang nhận đúng byte range và sample đã giải mã hay chưa;
-- kiểm tra chính xác KID/KEY/license flow của stream;
-- chỉ sau khi có bằng chứng runtime mới đánh dấu DRM hoàn thành.
+### 1.0.71 — REAL CLEARKEY + adaptive navigation
+- Cải thiện CENC parser và real ClearKey smoke.
+- Adaptive iPhone/iPad navigation.
+- Edge-swipe sidebar.
+- Keyboard/remote navigation.
+- Player routing cho DASH/ClearKey.
 
-### Trạng thái đóng gói
+### 1.0.70 — DRM + Web UI parity
+- Web-like home layout.
+- VTV backup HLS mapping.
+- CENC multi-moof/trun/tfhd improvements.
+- Cache version bump.
 
-IPA iOS là unsigned, cần ký bằng Apple Development/Ad Hoc hoặc Sideloadly trước khi cài thiết bị thật.
+### 1.0.69 — Android baseline
+- Android 1.0.69 làm source of truth.
+- SwiftUI iOS/iPadOS 16+.
+- AVPlayer + MobileVLCKit.
+- M3U parser, groups, favorites, recents, voice search, source management.
 
-### Quy tắc trạng thái từ thời điểm này
+## Kết luận trạng thái
 
-- CI xanh = build/test/package xanh.
-- DRM chạy thật trên iPhone/iPad = chỉ đánh dấu đạt sau khi kiểm tra runtime thành công.
-- Không xóa hoặc che giấu các lỗi runtime đã được người dùng phản ánh.
-- Android TV 1.0.69 vẫn là source of truth về chức năng và hành vi.
-- Không tiếp tục sửa DRM Safari/web.
-### Lịch sử nền trước 1.0.69
+**IN PROGRESS — chưa hoàn thành.**
 
-## Bàn giao 0.3.0 build 5 (2026-09-12)
-
-- Repo `phuongnm7/nm7-iptv-ios`; commit player lai: `79ee06dfdd13c7b1cc8fd33a1500ab9c5a996274`.
-- GitHub Actions run `34684587175`: **SUCCESS**.
-- Build Simulator, device, IPA và VLC đều thành công.
-- IPA chưa ký; ký bằng Sideloadly/Apple ID trước khi cài.
-
-## Mốc player lai 0.3.0
-
-- AVPlayer là player chính; MobileVLCKit 3.3.17 là fallback.
-- Hỗ trợ User-Agent, Referer, Cookie và cache mạng riêng cho VLC.
-- Giao diện player tự đổi bề mặt hiển thị.
-
-## Mốc 0.2.2 build 4
-
-- Khoanh vùng lỗi Cannot Open ở URL/header.
-- Hỗ trợ inline headers, `#EXTVLCOPT`, `#EXTHTTP`, User-Agent, Referer, Origin, Cookie.
-- Có unit test cho URL inline-header và JSON header.
-
-## Mốc 0.2.1 build 3
-
-- Sửa đóng gói IPA để tương thích Sideloadly 0.60.
-
-## Mốc 0.2.0
-
-- Chuyển kênh, trạng thái tải, lỗi, thử lại và tìm kênh bằng giọng nói tiếng Việt.
-
-## Mốc khởi tạo 0.1.0
-
-- SwiftUI, iOS/iPadOS 16+, parser M3U, cache, nhóm, tìm kiếm, yêu thích/gần đây và quản lý nhiều nguồn.
+Mốc 1.0.72 đã chuyển từ cách “AVPlayer trước, VLC fallback sau” sang **chọn đúng engine ngay từ đầu cho direct sports streams**, đồng thời real ClearKey smoke đã PASS. Chưa được coi là hoàn thành cho tới khi pipeline build/test/package và kiểm tra phát thực tế trên thiết bị đạt yêu cầu.
