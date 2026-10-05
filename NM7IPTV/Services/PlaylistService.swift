@@ -15,7 +15,7 @@ actor PlaylistService {
 
     init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        cacheURL = base.appendingPathComponent("nm7-1.0.70-channels-v3.json")
+        cacheURL = base.appendingPathComponent("nm7-1.0.72-channels-v4.json")
     }
 
     func cached() -> LoadedPlaylist? {
