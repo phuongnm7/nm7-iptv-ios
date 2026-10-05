@@ -57,20 +57,40 @@ final class FairPlayKeyLoader: NSObject, AVAssetResourceLoaderDelegate {
                 var licenseRequest = URLRequest(url: self.licenseURL)
                 licenseRequest.httpMethod = "POST"
                 licenseRequest.httpBody = spc
-                licenseRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                licenseRequest.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+                let configuredContentType = self.header(named: "Content-Type")
+                licenseRequest.setValue(
+                    configuredContentType?.isEmpty == false ? configuredContentType! : "application/octet-stream",
+                    forHTTPHeaderField: "Content-Type"
+                )
+                if self.header(named: "Accept") == nil {
+                    licenseRequest.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+                }
 
                 for (key, value) in self.headers {
                     licenseRequest.setValue(value, forHTTPHeaderField: key)
                 }
 
                 self.session.dataTask(with: licenseRequest) { data, response, error in
-                    guard error == nil, let data, !data.isEmpty else {
-                        request.finishLoading(with: error ?? self.error("FairPlay license trả về dữ liệu rỗng."))
+                    guard error == nil,
+                          let http = response as? HTTPURLResponse,
+                          200..<300 ~= http.statusCode,
+                          let data,
+                          !data.isEmpty else {
+                        let status = (response as? HTTPURLResponse)?.statusCode
+                        request.finishLoading(
+                            with: error ?? self.error(
+                                status.map { "FairPlay license HTTP \($0)." }
+                                    ?? "FairPlay license trả về dữ liệu rỗng."
+                            )
+                        )
                         return
                     }
 
                     let ckc = self.normalizeCKC(data, response: response)
+                    guard !ckc.isEmpty else {
+                        request.finishLoading(with: self.error("FairPlay license không chứa CKC hợp lệ."))
+                        return
+                    }
                     request.dataRequest?.respond(with: ckc)
                     request.finishLoading()
                 }.resume()
@@ -89,15 +109,30 @@ final class FairPlayKeyLoader: NSObject, AVAssetResourceLoaderDelegate {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else {
+                completion(nil, NSError(
+                    domain: "NM7FairPlay",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "FairPlay loader đã bị huỷ."]
+                ))
+                return
+            }
             guard error == nil,
                   let http = response as? HTTPURLResponse,
                   200..<300 ~= http.statusCode,
                   let data, !data.isEmpty else {
-                completion(nil, error ?? self.error("FairPlay certificate HTTP error."))
+                let status = (response as? HTTPURLResponse)?.statusCode
+                completion(
+                    nil,
+                    error ?? self.error(
+                        status.map { "FairPlay certificate HTTP \($0)." }
+                            ?? "FairPlay certificate HTTP error."
+                    )
+                )
                 return
             }
-            completion(data, nil)
+            completion(self.normalizeCertificate(data, response: response), nil)
         }.resume()
     }
 
@@ -106,29 +141,54 @@ final class FairPlayKeyLoader: NSObject, AVAssetResourceLoaderDelegate {
         let identifier = raw.lowercased().hasPrefix("skd://")
             ? String(raw.dropFirst(6))
             : raw
-        return identifier.data(using: .utf8) ?? Data()
+        if let decoded = identifier.removingPercentEncoding, decoded != identifier {
+            return Data(decoded.utf8)
+        }
+        return Data(identifier.utf8)
     }
 
-    private func normalizeCKC(_ data: Data, response: URLResponse?) -> Data {
-        guard let http = response as? HTTPURLResponse else { return data }
-        let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
-        guard contentType.contains("text") || contentType.contains("json") else { return data }
-
-        if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           let decoded = Data(base64Encoded: text), !decoded.isEmpty {
-            return decoded
-        }
-
+    private func normalizeCertificate(_ data: Data, response: URLResponse?) -> Data {
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in ["ckc", "CKC"] {
+            for key in ["certificate", "cert", "data"] {
                 if let value = object[key] as? String,
-                   let decoded = Data(base64Encoded: value),
+                   let decoded = Data(base64Encoded: value, options: [.ignoreUnknownCharacters]),
                    !decoded.isEmpty {
                     return decoded
                 }
             }
         }
+        if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let decoded = Data(base64Encoded: text, options: [.ignoreUnknownCharacters]),
+           !decoded.isEmpty {
+            return decoded
+        }
+        _ = response
         return data
+    }
+
+    private func normalizeCKC(_ data: Data, response: URLResponse?) -> Data {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["ckc", "CKC", "license", "data", "response"] {
+                if let value = object[key] as? String,
+                   let decoded = Data(base64Encoded: value, options: [.ignoreUnknownCharacters]),
+                   !decoded.isEmpty {
+                    return decoded
+                }
+            }
+        }
+
+        if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let decoded = Data(base64Encoded: text, options: [.ignoreUnknownCharacters]),
+           !decoded.isEmpty {
+            return decoded
+        }
+
+        _ = response
+        return data
+    }
+
+    private func header(named name: String) -> String? {
+        headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
     }
 
     private func error(_ description: String) -> NSError {
