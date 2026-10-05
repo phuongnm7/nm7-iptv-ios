@@ -222,7 +222,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
             case "user-agent": options["http-user-agent"] = value
             case "referer": options["http-referrer"] = value
             case "cookie": options["http-cookie"] = value
-            default: options["http-header"] = "(name): (value)"
+            default: options["http-header"] = "\(name): \(value)"
             }
         }
         if options["http-user-agent"] == nil { options["http-user-agent"] = "NM7-TV-iOS/1.0.69" }
