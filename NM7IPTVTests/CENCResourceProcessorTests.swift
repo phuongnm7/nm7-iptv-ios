@@ -36,9 +36,8 @@ final class CENCResourceProcessorTests: XCTestCase {
     }
 
     func testMalformedTencIsRejected() {
-        var tenc = makeTENC(version: 0, isProtected: 1, ivSize: 8, kid: kid)
-        tenc.replaceSubrange(0..<4, with: [0, 0, 0, 31])
-        XCTAssertNil(CENCResourceProcessor.parseTENC(data: tenc, offset: 0, size: tenc.count))
+        let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 8, kid: kid)
+        XCTAssertNil(CENCResourceProcessor.parseTENC(data: tenc, offset: 0, size: tenc.count - 1))
     }
 
     private func makeTENC(
