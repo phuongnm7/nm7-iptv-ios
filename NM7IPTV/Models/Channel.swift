@@ -21,7 +21,7 @@ struct Channel: Identifiable, Codable, Hashable {
         if url.contains(".mpd") {
             return true
         }
-        if options.contains({
+        if options.contains(where: {
             $0.lowercased().contains("manifest_type=mpd") ||
             $0.lowercased().contains("manifest_type=dash")
         }) {
