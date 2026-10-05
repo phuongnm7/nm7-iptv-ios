@@ -64,7 +64,15 @@ struct DRMInfo: Equatable {
             }
         }
         if system == .none && !license.isEmpty { system = .unknown }
-        return DRMInfo(system: system, licenseURL: URL(string: license), certificateURL: URL(string: certificate), licenseHeaders: sanitize(headers), licenseValue: license)
+        let hasInlineClearKey = system == .clearKey &&
+            !ClearKeyContentKeySession.parsePairs(license).isEmpty
+        return DRMInfo(
+            system: system,
+            licenseURL: hasInlineClearKey ? nil : URL(string: license),
+            certificateURL: URL(string: certificate),
+            licenseHeaders: sanitize(headers),
+            licenseValue: license
+        )
     }
 
     private static func sanitize(_ headers: [String: String]) -> [String: String] {
