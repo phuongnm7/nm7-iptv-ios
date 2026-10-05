@@ -375,7 +375,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     }
 
     private func key(for kid: Data) async throws -> Data {
-        let id = kid.base64EncodedString()
+        let id = base64URL(kid)
         lock.lock()
         if let cached = keys[id] {
             lock.unlock()
