@@ -666,10 +666,80 @@ extension UPlayer: UPlayerAssetProcessorsQueueDelegate {
 
         assetCache?.addAsset(asset)
 
+        if asset.mediaResourceProcessor != nil {
+            rewriteHLSForMediaProcessor(asset)
+        }
+
         startPlayback(asset: asset)
         startPullingLiveMpd(asset: asset)
     }
     
+    private func rewriteHLSForMediaProcessor(_ asset: UPlayerAssetProtocol) {
+        guard let hls = asset.hlsMetadata else { return }
+
+        func wrap(_ raw: String, mode: String) -> String {
+            guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return raw }
+            guard url.scheme != "uplayer" else { return raw }
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.scheme = "uplayer"
+            var items = components?.queryItems ?? []
+            items.removeAll { $0.name == "mode" || $0.name == "codec" || $0.name == "cacheFile" }
+            items.append(URLQueryItem(name: "mode", value: mode))
+            components?.queryItems = items
+            return components?.url?.absoluteString ?? raw
+        }
+
+        func rewritePlaylist(_ playlist: String) -> String {
+            var output: [String] = []
+            var expectSegment = false
+
+            for line in playlist.components(separatedBy: .newlines) {
+                if line.hasPrefix("#EXT-X-MAP:") {
+                    var rewritten = line
+                    if let range = line.range(of: #"URI="[^"]+""#, options: .regularExpression),
+                       let quotedRange = line.range(of: #"URI="([^"]+)""#, options: .regularExpression) {
+                        let match = String(line[quotedRange])
+                        let rawURL = match
+                            .replacingOccurrences(of: #"^URI=""#, with: "", options: .regularExpression)
+                            .replacingOccurrences(of: #"""$"#, with: "", options: .regularExpression)
+                        let replacement = #"URI=""# + wrap(rawURL, mode: "cenc-init") + #"""#
+                        rewritten.replaceSubrange(range, with: replacement)
+                    }
+                    output.append(rewritten)
+                    expectSegment = false
+                    continue
+                }
+
+                if line.hasPrefix("#EXTINF:") {
+                    output.append(line)
+                    expectSegment = true
+                    continue
+                }
+
+                if expectSegment && !line.hasPrefix("#") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    output.append(wrap(line, mode: "cenc-segment"))
+                    expectSegment = false
+                    continue
+                }
+
+                output.append(line)
+            }
+            return output.joined(separator: "\n")
+        }
+
+        hls.master = hls.master.components(separatedBy: .newlines)
+            .map { line in
+                guard !line.hasPrefix("#"), !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let url = URL(string: line.trimmingCharacters(in: .whitespacesAndNewlines)) else { return line }
+                return url.scheme == "https" || url.scheme == "http"
+                    ? line
+                    : line
+            }
+            .joined(separator: "\n")
+
+        hls.mediaPlaylists = hls.mediaPlaylists.mapValues(rewritePlaylist)
+    }
+
     private func makePlayerItem(from asset: any UPlayerAssetProtocol) async throws -> AVPlayerItem {
         var isPlayable = false
         var avAsset: AVURLAsset
