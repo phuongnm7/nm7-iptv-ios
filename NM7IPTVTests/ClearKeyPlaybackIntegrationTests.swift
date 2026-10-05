@@ -6,14 +6,14 @@ final class ClearKeyPlaybackIntegrationTests: XCTestCase {
     @MainActor
     func testPublicClearKeyDASHAdvancesPlayback() async throws {
         let channel = Channel(
-            name: "Public ClearKey DASH integration",
+            name: "Public ClearKey DASH SegmentTemplate integration",
             group: "Integration",
             logoURL: nil,
-            streamURL: URL(string: "https://yt-dash-mse-test.commondatastorage.googleapis.com/media/car_cenc-20120827-manifest.mpd")!,
+            streamURL: URL(string: "https://media.axprod.net/TestVectors/v7-MultiDRM-SingleKey/Manifest_1080p_ClearKey.mpd")!,
             options: [
                 "#KODIPROP:inputstream.adaptive.manifest_type=mpd",
                 "#KODIPROP:inputstream.adaptive.license_type=clearkey",
-                "#KODIPROP:inputstream.adaptive.license_key=kid=60061e017e477e877e57d00d1ed00d1e&key=1a8a2095e4deb2d29ec816ac7bae2082"
+                "#KODIPROP:inputstream.adaptive.license_key=kid=f3d73b3a9b89462ebf7911004ea3b3b9&key=2e547a81ff90aa02648cb9e3f79e7339"
             ]
         )
         let player = ChannelPlayer()
