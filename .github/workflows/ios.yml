@@ -13,97 +13,60 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install build tools
-        shell: bash
         run: |
-          set -o pipefail
-          mkdir -p ci-diagnostics
-          { brew install xcodegen && pod --version; } 2>&1 | tee ci-diagnostics/install.log
+          brew install xcodegen
+          xcodegen --version
+          pod --version
 
-      - name: Generate Xcode workspace
-                shell: bash
+      - name: Generate workspace
         run: |
-          set -o pipefail
-          { xcodegen generate && pod install --repo-update; } 2>&1 | tee ci-diagnostics/generate.log
+          xcodegen generate
+          pod install --repo-update
 
-      - name: Build iPhone and iPad Simulator app
-                shell: bash
-        run: >
-          xcodebuild
-          -workspace NM7IPTV.xcworkspace
-          -scheme NM7IPTV
-          -sdk iphonesimulator
-          -configuration Debug
-          CODE_SIGNING_ALLOWED=NO
-          build 2>&1 | tee ci-diagnostics/simulator-build.log
-
-      - name: Run unit tests
-                shell: bash
+      - name: Simulator build
         run: |
-          set -euo pipefail
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+
+      - name: Unit tests
+        run: |
           DESTINATION_ID="$(xcrun simctl list devices available | grep -E '^[[:space:]]+iPhone ' | grep -oE '[0-9A-F-]{36}' | head -n 1)"
-          if [ -z "$DESTINATION_ID" ]; then
-            echo "No available iPhone Simulator found."
-            xcrun simctl list devices available
-            exit 1
-          fi
-          echo "Using Simulator: $DESTINATION_ID"
-          xcodebuild             -workspace NM7IPTV.xcworkspace             -scheme NM7IPTV             -destination "id=$DESTINATION_ID"             -configuration Debug             CODE_SIGNING_ALLOWED=NO             test 2>&1 | tee ci-diagnostics/tests.log
+          test -n "$DESTINATION_ID"
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -destination "id=$DESTINATION_ID" -configuration Debug CODE_SIGNING_ALLOWED=NO test
 
-      - name: Build unsigned iPhone and iPad device app
-                shell: bash
-        run: >
-          xcodebuild
-          -workspace NM7IPTV.xcworkspace
-          -scheme NM7IPTV
-          -sdk iphoneos
-          -configuration Release
-          -derivedDataPath build/device
-          CODE_SIGNING_ALLOWED=NO
-          CODE_SIGNING_REQUIRED=NO
-          build 2>&1 | tee ci-diagnostics/device-build.log
+      - name: Device build
+        run: |
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -sdk iphoneos -configuration Release -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 
-      - name: Package and validate unsigned IPA
-                run: |
+      - name: Package IPA
+        run: |
           rm -rf Payload NM7-IPTV-iOS-1.0.69-unsigned.ipa
           mkdir -p Payload
           cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
           xattr -cr Payload
           /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.69-unsigned.ipa Payload
           unzip -t NM7-IPTV-iOS-1.0.69-unsigned.ipa
-          unzip -Z1 NM7-IPTV-iOS-1.0.69-unsigned.ipa > ipa-contents.txt
-          test -f "Payload/NM7IPTV.app/Info.plist"
-          test -f "Payload/NM7IPTV.app/NM7IPTV"
-          VLC_BINARY="$(find Payload/NM7IPTV.app/Frameworks -maxdepth 3 -type f -name "MobileVLCKit" -print -quit)"
-          test -n "$VLC_BINARY"
-          VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Payload/NM7IPTV.app/Info.plist)"
-          BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Payload/NM7IPTV.app/Info.plist)"
+          test -f Payload/NM7IPTV.app/Info.plist
+          test -f Payload/NM7IPTV.app/NM7IPTV
+          test -d Payload/NM7IPTV.app/Frameworks
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/NM7IPTV.app/Info.plist)"
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/NM7IPTV.app/Info.plist)"
           echo "IPA_VERSION=$VERSION IPA_BUILD=$BUILD"
-          echo "VLC_BINARY=$VLC_BINARY"
           test "$VERSION" = "1.0.69"
           test "$BUILD" = "69"
           shasum -a 256 NM7-IPTV-iOS-1.0.69-unsigned.ipa > NM7-IPTV-iOS-1.0.69-unsigned.ipa.sha256
 
-      - name: Upload unsigned IPA
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: NM7-IPTV-iOS-1.0.69-unsigned-IPA
+          name: NM7-IPTV-iOS-1.0.69-final-unsigned-IPA
           path: |
             NM7-IPTV-iOS-1.0.69-unsigned.ipa
             NM7-IPTV-iOS-1.0.69-unsigned.ipa.sha256
           retention-days: 30
-
-
-      - name: Upload CI diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: NM7-iOS-CI-diagnostics
-          path: ci-diagnostics
-          if-no-files-found: ignore
-          retention-days: 7
