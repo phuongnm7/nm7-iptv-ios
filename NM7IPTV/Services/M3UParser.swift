@@ -114,7 +114,7 @@ enum M3UParser {
             options.removeAll(keepingCapacity: true)
         }
 
-        return Result(channels: makeIOSCompatible(channels), epgURL: epgURL)
+        return Result(channels: normalizeForIOS(channels), epgURL: epgURL)
     }
 
     /// iOS cannot invoke the Widevine CDM used by the "Dự phòng" VTV entries.
