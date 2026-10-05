@@ -3,14 +3,15 @@ import Foundation
 import MobileVLCKit
 import UIKit
 
+enum ChannelPlayerEngine: Equatable { case avPlayer, vlc }
+
 @MainActor
 final class ChannelPlayer: NSObject, ObservableObject {
-    enum Engine: Equatable { case avPlayer, vlc }
 
     let player = AVPlayer()
     let vlcPlayer = VLCMediaPlayer()
 
-    @Published private(set) var engine: Engine = .avPlayer
+    @Published private(set) var engine: ChannelPlayerEngine = .avPlayer
     @Published private(set) var isLoading = false
     @Published private(set) var statusMessage = ""
     @Published var errorMessage: String?
