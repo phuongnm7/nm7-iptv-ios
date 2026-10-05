@@ -640,7 +640,7 @@ private extension UPlayerHLSGenerator {
         // DASH permits formatted template identifiers such as $Number%04d$.
         // Expand them before emitting the HLS playlist; AVPlayer cannot resolve
         // DASH template syntax in a media playlist URI.
-        let numberPattern = #"$Number(?:%0?(\\d+)d)?$"#
+        let numberPattern = #"\\$Number(?:%0?(\\d+)d)?\\$"#
         if let regex = try? NSRegularExpression(pattern: numberPattern) {
             let searchRange = NSRange(media.startIndex..., in: media)
             for match in regex.matches(in: media, range: searchRange).reversed() {
