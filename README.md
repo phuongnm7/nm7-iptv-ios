@@ -8,18 +8,19 @@
 - **Bundle version:** 69
 - **Nền tham chiếu:** NM7 TV Android 1.0.69
 - **Android reference commit:** `f79fc06009f20e0ac3a5859c0abcfd6ce70a6763`
-- **iOS branch:** `feat/ios-1.0.69-android-baseline`
-- **Latest verified commit:** `88743022709311c19537b57ce3516a4a6ff077bd`
+- **iOS branch:** `release/ios-1.0.69-final-drm-v2`
+- **Latest app-build commit:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`
 - **Nền tảng:** iOS/iPadOS 16+
 - **Thiết bị:** iPhone + iPad
 - **UI:** SwiftUI
 - **Player chính:** AVPlayer
 - **Player dự phòng:** MobileVLCKit / VLC
 - **Repository:** Public để sử dụng GitHub-hosted macOS runner
-- **CI cuối cùng đã xác minh:** **run #153 — SUCCESS toàn bộ**: Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
-- **IPA mới:** unsigned, SHA256 `d3d8ac8be9930d3216108ae737503a5bac20d5499cd43daeb82bced2f73b0cc0`
-- **Artifact mới:** `NM7-IPTV-iOS-1.0.69-final-unsigned-IPA` (ID `11335080731`)
-- **Artifact digest:** `sha256:3ea7d2d447aaed7413f10de7afb6a6631f1ae167e7f35082c5b6e2a55c2ef4e6`
+- **CI cuối cùng đã xác minh:** **run #15 — SUCCESS toàn bộ**: Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
+- **IPA cuối:** `NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa`
+- **IPA SHA256:** `ab0b39b4a16e1d4022769da57ab60e98a3b08fe34c98cbac3a2ef6a135dc8d61`
+- **Artifact:** `NM7-IPTV-iOS-1.0.69-FINAL-DRM-v2` (ID `11340591479`)
+- **Artifact digest:** `sha256:fc2d0f6ff3ae107e55063a738e8fa28b17b30540c3de68b3deeca2e30732d8f4`
 
 ## Mục tiêu của bản iOS 1.0.69
 
@@ -68,6 +69,8 @@ GitHub Actions đã xác minh thành công bản iOS 1.0.69 ở **run #153**. IP
 
 ## Tiến độ
 
-Đã hoàn thiện nền tảng UI/player, metadata version, header propagation và pipeline đóng gói. Đã bổ sung và sửa đường xử lý DASH/ClearKey CENC ở source, bao gồm parser `tenc` KID/IV và sample-count validation. Workflow **run #153** đã build, test và đóng gói IPA 1.0.69 thành công. Việc xác nhận cuối cùng của DRM end-to-end vẫn cần chạy kênh DASH/ClearKey thực tế trên iPhone/iPad có quyền phát.
+Đã hoàn thiện pipeline build/package cho iOS 1.0.69. **GitHub Actions run #15 đã SUCCESS toàn bộ** với commit app-build `1f481d5833cbcf3256c716afb00d69ac659fef4e`. IPA unsigned đã được tải xuống và kiểm tra trực tiếp: ZIP integrity PASS, executable PASS, version `1.0.69`, build `69`, `Assets.car` PASS và `nm7_default_background_new.webp` PASS.
+
+Đường DASH/ClearKey CENC đã được sửa và có bộ unit test CENC/DRM riêng; các unit test đã PASS trong run #15. Đây là bằng chứng parser/giải mã mẫu và pipeline build hoạt động đúng trong môi trường CI. Việc xác nhận **phát end-to-end trên iPhone/iPad thật** vẫn cần cài IPA và chạy một stream DASH/ClearKey có quyền phát trên thiết bị thật.
 
 Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
