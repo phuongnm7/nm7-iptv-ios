@@ -100,6 +100,8 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 continue
             }
 
+            guard parsed.isProtected == 1 else { continue }
+
             tracks[trackID] = TrackInfo(
                 kid: parsed.kid,
                 ivSize: parsed.ivSize,
@@ -247,11 +249,11 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 throw error("CENC fragment thiếu senc hoặc saiz/saio cho track \(trackID).")
             }
 
-            let key = try await key(for: encryption.kid)
             guard encryption.entries.count == sampleSizes.count else {
                 throw error("CENC encryption/sample count không khớp (enc=\(encryption.entries.count), trun=\(sampleSizes.count)).")
             }
 
+            let key = try await key(for: encryption.kid)
             var sampleOffset = dataOffset
             for index in 0..<encryption.entries.count {
                 let size = sampleSizes[index]
