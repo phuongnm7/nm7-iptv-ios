@@ -30,6 +30,17 @@ final class AppViewModel: ObservableObject {
 
     init() { Task { await start() } }
 
+    static func builtInSourceID(for section: Section, activeSourceID: String) -> String? {
+        switch section {
+        case .television where activeSourceID == SourceStore.sportsID:
+            return SourceStore.defaultID
+        case .sports where activeSourceID == SourceStore.defaultID:
+            return SourceStore.sportsID
+        default:
+            return nil
+        }
+    }
+
     var groups: [String] {
         var seen = Set<String>()
         let discovered = channels.compactMap { channel -> (String, Int)? in
@@ -119,19 +130,10 @@ final class AppViewModel: ObservableObject {
         searchText = ""
         selectedGroup = "Tất cả"
 
-        switch next {
-        case .television:
-            if sourceStore.activeSourceID != SourceStore.defaultID {
-                sourceStore.select(sourceStore.defaultSource)
-                await reload()
-            }
-        case .sports:
-            if sourceStore.activeSourceID != SourceStore.sportsID {
-                sourceStore.select(sourceStore.sportsSource)
-                await reload()
-            }
-        default:
-            break
+        if let sourceID = Self.builtInSourceID(for: next, activeSourceID: sourceStore.activeSourceID),
+           let source = sourceStore.allSources.first(where: { $0.id == sourceID }) {
+            sourceStore.select(source)
+            await reload()
         }
     }
 
