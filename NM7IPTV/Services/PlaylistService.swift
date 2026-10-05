@@ -59,6 +59,19 @@ actor PlaylistService {
            let backupURL = URL(string: "https://raw.githubusercontent.com/phuongnm7/Iptv-phuongnm7/main/vmttv"),
            let backupText = try? await fetchText(url: backupURL) {
             let backup = M3UParser.parse(backupText, baseURL: backupURL)
+            let vtvPrimary = backup.channels.filter {
+                let group = $0.group
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                let name = $0.name
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                return group == "vtv" &&
+                    name.hasPrefix("vtv") &&
+                    !$0.isDASH &&
+                    !$0.isLikelyDRM
+            }
+
             let vtvBackup = backup.channels.filter {
                 let group = $0.group
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,6 +82,11 @@ actor PlaylistService {
                 return (group.contains("dự phòng") || group.contains("du phong")) &&
                     name.hasPrefix("vtv")
             }
+
+            // Bring in both the known-good VTV HLS primary entries and their
+            // backup records, then normalize once so backup mapping can resolve
+            // against a guaranteed non-DRM primary.
+            channels.append(contentsOf: vtvPrimary)
             channels.append(contentsOf: vtvBackup)
             channels = M3UParser.normalizeForIOS(channels)
 
