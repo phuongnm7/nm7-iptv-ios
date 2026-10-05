@@ -28,6 +28,357 @@ jobs:
           xcodegen --version
           pod --version
 
+      - name: Real ClearKey network/CENC smoke
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check -q cryptography
+          python3 - <<'PY'
+          import base64
+          import json
+          import re
+          import struct
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          from urllib.parse import urljoin
+
+          PLAYLIST = "https://raw.githubusercontent.com/phuongnm7/nm7-tv-web/main/web-tv/playlist.json"
+          UA_FALLBACK = "Dalvik/2.1.0"
+
+          def get(url, headers=None, byte_range=None):
+              req = urllib.request.Request(url, method="GET")
+              for k, v in (headers or {}).items():
+                  req.add_header(k, v)
+              if byte_range is not None:
+                  req.add_header("Range", f"bytes={byte_range[0]}-{byte_range[1]}")
+              with urllib.request.urlopen(req, timeout=25) as r:
+                  return r.read(), r.headers, r.geturl(), getattr(r, "status", 200)
+
+          def local(tag):
+              return tag.rsplit("}", 1)[-1]
+
+          def child(node, name):
+              if node is None:
+                  return None
+              for x in list(node):
+                  if local(x.tag) == name:
+                      return x
+              return None
+
+          def children(node, name):
+              return [x for x in list(node or []) if local(x.tag) == name]
+
+          def parse_template(s, number, time_value, rep_id, bandwidth):
+              if not s:
+                  return ""
+              repl = {
+                  "Number": str(number),
+                  "Time": str(time_value),
+                  "RepresentationID": rep_id,
+                  "Bandwidth": str(bandwidth),
+              }
+              def sub(m):
+                  key = m.group(1)
+                  width = m.group(2)
+                  value = repl.get(key, m.group(0))
+                  return value.zfill(int(width)) if width and value.isdigit() else value
+              return re.sub(r"\$(Number|Time|RepresentationID|Bandwidth)(?:%0(\d+)d)?\$", sub, s)
+
+          def b64url_decode(s):
+              s = s.replace("-", "+").replace("_", "/")
+              s += "=" * ((4 - len(s) % 4) % 4)
+              return base64.b64decode(s)
+
+          def boxes(data, start=0, end=None):
+              end = len(data) if end is None else min(end, len(data))
+              p = start
+              while p + 8 <= end:
+                  sz = struct.unpack_from(">I", data, p)[0]
+                  typ = data[p+4:p+8].decode("ascii", "replace")
+                  hdr = 8
+                  if sz == 1:
+                      if p + 16 > end:
+                          return
+                      sz = struct.unpack_from(">Q", data, p+8)[0]
+                      hdr = 16
+                  elif sz == 0:
+                      sz = end - p
+                  if sz < hdr or p + sz > end:
+                      return
+                  yield p, int(sz), typ, hdr
+                  p += int(sz)
+
+          def find_all(data, typ, start=0, end=None):
+              out = []
+              for p, sz, t, hdr in boxes(data, start, end):
+                  if t == typ:
+                      out.append((p, sz, t, hdr))
+                  if sz > hdr and t in {"moov", "trak", "mdia", "minf", "stbl", "stsd", "mvex", "moof", "traf"}:
+                      out.extend(find_all(data, typ, p+hdr, p+sz))
+              return out
+
+          def u32(data, off):
+              return struct.unpack_from(">I", data, off)[0]
+
+          def i32(data, off):
+              return struct.unpack_from(">i", data, off)[0]
+
+          def tenc_info(init):
+              for p, sz, _, hdr in find_all(init, "tenc"):
+                  if p + 32 > len(init):
+                      continue
+                  version = init[p+hdr]
+                  pattern = init[p+hdr+1]
+                  protected = init[p+hdr+2]
+                  iv_size = init[p+hdr+3]
+                  kid = init[p+hdr+4:p+hdr+20]
+                  crypt = (pattern >> 4) & 0xF if version >= 1 else 0
+                  skip = pattern & 0xF if version >= 1 else 0
+                  return version, protected, iv_size, kid, crypt, skip
+              raise RuntimeError("init không có tenc")
+
+          def scheme_info(init):
+              for p, sz, _, hdr in find_all(init, "schm"):
+                  if p + hdr + 8 <= p + sz:
+                      return init[p+hdr+4:p+hdr+8].decode("ascii", "replace")
+              return "cenc"
+
+          def parse_senc(fragment, senc):
+              p, sz, _, hdr = senc
+              flags = int.from_bytes(fragment[p+hdr+1:p+hdr+4], "big")
+              cur = p + hdr + 4
+              count = u32(fragment, cur)
+              cur += 4
+              entries = []
+              iv_size = 16
+              for _ in range(count):
+                  iv = fragment[cur:cur+iv_size]
+                  cur += iv_size
+                  subs = None
+                  if flags & 0x2:
+                      n = int.from_bytes(fragment[cur:cur+2], "big")
+                      cur += 2
+                      subs = []
+                      for _ in range(n):
+                          clear = int.from_bytes(fragment[cur:cur+2], "big")
+                          encrypted = u32(fragment, cur+2)
+                          cur += 6
+                          subs.append((clear, encrypted))
+                  entries.append((iv, subs))
+              return entries
+
+          def inspect_and_decrypt(init, media, key_bytes, scheme):
+              moofs = list(boxes(media))
+              moof = next((x for x in moofs if x[2] == "moof"), None)
+              if not moof:
+                  raise RuntimeError("media không có moof")
+              mp, ms, _, mh = moof
+              traf = next((x for x in boxes(media, mp+mh, mp+ms) if x[2] == "traf"), None)
+              if not traf:
+                  raise RuntimeError("moof không có traf")
+              tp, ts, _, th = traf
+              tfhd = next((x for x in boxes(media, tp+th, tp+ts) if x[2] == "tfhd"), None)
+              trun = next((x for x in boxes(media, tp+th, tp+ts) if x[2] == "trun"), None)
+              senc = next((x for x in boxes(media, tp+th, tp+ts) if x[2] == "senc"), None)
+              if not tfhd or not trun or not senc:
+                  raise RuntimeError("fragment thiếu tfhd/trun/senc; chưa hỗ trợ saiz/saio smoke path")
+              fp, fs, _, fh = tfhd
+              flags = int.from_bytes(media[fp+fh+1:fp+fh+4], "big")
+              cur = fp + fh + 4
+              track_id = u32(media, cur)
+              cur += 4
+              base = mp
+              if flags & 0x000001:
+                  base = int.from_bytes(media[cur:cur+8], "big")
+                  cur += 8
+              if flags & 0x000002:
+                  cur += 4
+              default_size = None
+              if flags & 0x000008:
+                  cur += 4
+              if flags & 0x000010:
+                  default_size = u32(media, cur)
+                  cur += 4
+              if flags & 0x000020:
+                  cur += 4
+
+              rp, rs, _, rh = trun
+              rflags = int.from_bytes(media[rp+rh+1:rp+rh+4], "big")
+              rcur = rp + rh + 4
+              sample_count = u32(media, rcur)
+              rcur += 4
+              data_offset = mp + ms
+              if rflags & 0x000001:
+                  data_offset = base + i32(media, rcur)
+                  rcur += 4
+              if rflags & 0x000004:
+                  rcur += 4
+              if sample_count < 1:
+                  raise RuntimeError("trun sample_count=0")
+              sample_size = default_size
+              if rflags & 0x000100:
+                  rcur += 4
+              if rflags & 0x000200:
+                  sample_size = u32(media, rcur)
+                  rcur += 4
+              if rflags & 0x000400:
+                  rcur += 4
+              if rflags & 0x000800:
+                  rcur += 4
+              if sample_size is None:
+                  raise RuntimeError("không có sample size (trun/tfhd/trex)")
+
+              # Standalone media segments normally have moof/data offsets local to
+              # this response; normalize a file-relative offset if needed.
+              local_sample = data_offset
+              if local_sample < 0 or local_sample + sample_size > len(media):
+                  local_sample = data_offset
+              if local_sample < 0 or local_sample + sample_size > len(media):
+                  raise RuntimeError(
+                      f"sample range invalid: dataOffset={data_offset} size={sample_size} mediaBytes={len(media)}"
+                  )
+
+              entries = parse_senc(media, senc)
+              if not entries:
+                  raise RuntimeError("senc không có entry")
+              iv, subs = entries[0]
+
+              from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+              sample = bytearray(media[local_sample:local_sample+sample_size])
+              if scheme.lower() in ("cenc", "cbc1"):
+                  counter = iv + (b"\0" * 8) if len(iv) == 8 else iv
+                  cryptor = Cipher(
+                      algorithms.AES(key_bytes),
+                      modes.CTR(counter)
+                  ).encryptor()
+
+                  if subs:
+                      pos = 0
+                      for clear, encrypted in subs:
+                          pos += clear
+                          if encrypted:
+                              sample[pos:pos+encrypted] = cryptor.update(bytes(sample[pos:pos+encrypted]))
+                              pos += encrypted
+                  else:
+                      sample[:] = cryptor.update(bytes(sample))
+                  cryptor.finalize()
+              elif scheme.lower() == "cbcs":
+                  # Basic CBCS smoke: decrypt complete encrypted 16-byte blocks.
+                  decryptor = Cipher(
+                      algorithms.AES(key_bytes),
+                      modes.CBC(iv)
+                  ).decryptor()
+                  clear = bytes(sample[:len(sample)//16*16])
+                  sample[:len(clear)] = decryptor.update(clear)
+                  decryptor.finalize()
+              else:
+                  raise RuntimeError(f"scheme chưa hỗ trợ: {scheme}")
+
+              # Validate a plausible ISO BMFF AVC/HEVC length-prefixed NAL start.
+              nal_len = int.from_bytes(sample[:4], "big") if len(sample) >= 4 else 0
+              plausible = 0 < nal_len <= len(sample) - 4
+              first_type = sample[4] & 0x1F if len(sample) >= 5 else 0
+              plausible = plausible and 1 <= first_type <= 31
+              if not plausible:
+                  raise RuntimeError(
+                      f"decrypted sample không có NAL structure hợp lệ: "
+                      f"first4={sample[:4].hex()} first5={sample[:5].hex()}"
+                  )
+
+              print(
+                  f"REAL-CLEARKEY-SMOKE PASS: track={track_id} scheme={scheme} "
+                  f"sampleSize={sample_size} sampleOffset={local_sample} "
+                  f"IV={iv.hex()} decryptedHead={bytes(sample[:16]).hex()}"
+              )
+
+          playlist_bytes, _, _, _ = get(PLAYLIST)
+          doc = json.loads(playlist_bytes.decode("utf-8"))
+          channel = next(
+              (c for c in doc.get("channels", [])
+               if c.get("name", "").strip().lower() == "on sports 50fps"),
+              None
+          )
+          if not channel:
+              raise RuntimeError("web playlist không có On Sports 50fps")
+
+          cand = channel["candidates"][0]
+          drm = cand.get("drm") or {}
+          if str(drm.get("type", "")).lower() != "clearkey":
+              raise RuntimeError(f"On Sports 50fps không phải ClearKey: {drm}")
+
+          raw_key = str(drm.get("key", ""))
+          if ":" not in raw_key:
+              raise RuntimeError("ClearKey inline không có kid:key")
+          kid_text, key_text = raw_key.split(":", 1)
+          kid = b64url_decode(kid_text) if re.fullmatch(r"[A-Za-z0-9_-]+", kid_text) and len(kid_text) != 32 else bytes.fromhex(kid_text)
+          key = b64url_decode(key_text) if re.fullmatch(r"[A-Za-z0-9_-]+", key_text) and len(key_text) != 32 else bytes.fromhex(key_text)
+          if len(kid) != 16 or len(key) != 16:
+              raise RuntimeError(f"KID/KEY length invalid: {len(kid)}/{len(key)}")
+
+          headers = {"User-Agent": cand.get("ua") or UA_FALLBACK}
+          mpd_bytes, _, mpd_url, _ = get(cand["url"], headers)
+          root = ET.fromstring(mpd_bytes)
+
+          period = children(root, "Period")[0]
+          adaptation = next(
+              a for a in children(period, "AdaptationSet")
+              if (a.attrib.get("contentType") or a.attrib.get("mimeType", "")).lower().startswith("video")
+              or any("video/" in (r.attrib.get("mimeType", "")).lower() for r in children(a, "Representation"))
+          )
+          rep = children(adaptation, "Representation")[0]
+          rep_id = rep.attrib.get("id", "")
+          bandwidth = int(rep.attrib.get("bandwidth", "0"))
+
+          bases = []
+          for node in (root, period, adaptation, rep):
+              b = child(node, "BaseURL")
+              if b is not None and b.text:
+                  bases.append(b.text.strip())
+          base_url = mpd_url
+          for b in bases:
+              base_url = urljoin(base_url, b)
+
+          template = child(rep, "SegmentTemplate") or child(adaptation, "SegmentTemplate")
+          if template is None:
+              raise RuntimeError("smoke hiện yêu cầu SegmentTemplate; MPD cần thêm SegmentBase handler")
+
+          start_number = int(template.attrib.get("startNumber", "1"))
+          timeline = child(template, "SegmentTimeline")
+          first_s = child(timeline, "S")
+          time_value = int(first_s.attrib.get("t", "0")) if first_s is not None and "t" in first_s.attrib else 0
+
+          init_ref = parse_template(
+              template.attrib.get("initialization", ""),
+              start_number, time_value, rep_id, bandwidth
+          )
+          media_ref = parse_template(
+              template.attrib.get("media", ""),
+              start_number, time_value, rep_id, bandwidth
+          )
+
+          init_url = urljoin(base_url, init_ref)
+          media_url = urljoin(base_url, media_ref)
+
+          init, _, _, _ = get(init_url, headers)
+          media, _, _, _ = get(media_url, headers)
+
+          version, protected, iv_size, tenc_kid, crypt, skip = tenc_info(init)
+          scheme = scheme_info(init)
+          if protected != 1:
+              raise RuntimeError("tenc isProtected != 1")
+          if tenc_kid != kid:
+              raise RuntimeError(
+                  f"KID mismatch: playlist={kid.hex()} tenc={tenc_kid.hex()}"
+              )
+
+          print(
+              f"Observed real stream: mpd={mpd_url} scheme={scheme} "
+              f"tencVersion={version} ivSize={iv_size} crypt={crypt} skip={skip}"
+          )
+          inspect_and_decrypt(init, media, key, scheme)
+          PY
+
       - name: Prepare bundled visual assets
         run: |
           set -euo pipefail
