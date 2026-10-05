@@ -273,7 +273,7 @@ private final class DashPlayerBridge: NSObject, UPlayerDelegate {
     }
     func didEventPlayerStop(source: UPlayerProtocol, error: Error?) {
         Task { @MainActor in
-            owner?.isLoading = false
+            owner?.setLoading(false)
             if let error { owner?.showError("DASH/ClearKey: \(error.localizedDescription)") }
         }
     }
