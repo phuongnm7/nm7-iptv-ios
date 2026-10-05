@@ -44,8 +44,7 @@ targets:
         CFBundleIcons:
           CFBundlePrimaryIcon:
             CFBundleIconFiles:
-              - nm7_app_icon
-            CFBundleIconName: nm7_app_icon
+              - nm7_tv_launcher
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
