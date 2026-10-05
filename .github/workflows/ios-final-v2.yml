@@ -1,0 +1,97 @@
+name: NM7 IPTV iOS 1.0.69 FINAL V2
+
+on:
+  push:
+    branches:
+      - release/ios-1.0.69-final-drm-v2
+  workflow_dispatch:
+
+concurrency:
+  group: nm7-ios-final-v2
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen --version
+          pod --version
+
+      - name: Prepare bundled visual assets
+        run: |
+          set -euo pipefail
+          test -s NM7IPTV/Resources/nm7_default_background_new.webp
+          test -s NM7IPTV/Resources/nm7_default_background.jpg
+          test -s NM7IPTV/Resources/nm7_tv_launcher_android.png
+          mkdir -p NM7IPTV/Assets.xcassets/AppIcon.appiconset
+          sips -z 1024 1024 NM7IPTV/Resources/nm7_tv_launcher_android.png --out NM7IPTV/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          cat > NM7IPTV/Assets.xcassets/Contents.json <<'EOF'
+          {"info":{"author":"xcode","version":1}}
+          EOF
+          cat > NM7IPTV/Assets.xcassets/AppIcon.appiconset/Contents.json <<'EOF'
+          {
+            "images":[
+              {"filename":"AppIcon.png","idiom":"universal","platform":"ios","size":"1024x1024","scale":"1x"}
+            ],
+            "info":{"author":"xcode","version":1}
+          }
+          EOF
+
+      - name: Generate workspace
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+
+      - name: Simulator build
+        run: |
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+
+      - name: Unit tests
+        run: |
+          set -euo pipefail
+          DESTINATION_ID="$(xcrun simctl list devices available | grep -E '^[[:space:]]+iPhone ' | grep -oE '[0-9A-F-]{36}' | head -n 1)"
+          test -n "$DESTINATION_ID"
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -destination "id=$DESTINATION_ID" -configuration Debug CODE_SIGNING_ALLOWED=NO test
+
+      - name: Device build
+        run: |
+          xcodebuild -workspace NM7IPTV.xcworkspace -scheme NM7IPTV -sdk iphoneos -configuration Release -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Verify final app assets
+        run: |
+          set -euo pipefail
+          APP="build/device/Build/Products/Release-iphoneos/NM7IPTV.app"
+          test -d "$APP"
+          test -f "$APP/nm7_default_background_new.webp"
+          test -f "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | grep -Fx "1.0.69"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" | grep -Fx "69"
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa
+          mkdir -p Payload
+          cp -R build/device/Build/Products/Release-iphoneos/NM7IPTV.app Payload/
+          xattr -cr Payload
+          /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa Payload
+          unzip -t NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa
+          shasum -a 256 NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa > NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa.sha256
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NM7-IPTV-iOS-1.0.69-FINAL-DRM-v2
+          path: |
+            NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa
+            NM7-IPTV-iOS-1.0.69-final-v2-unsigned.ipa.sha256
+          retention-days: 30
