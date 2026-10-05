@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "1.0.72"
-    CURRENT_PROJECT_VERSION: "72"
+    MARKETING_VERSION: "1.0.73"
+    CURRENT_PROJECT_VERSION: "73"
     DEVELOPMENT_TEAM: ""
 targets:
   NM7IPTV:
@@ -26,8 +26,8 @@ targets:
       path: NM7IPTV/Info.plist
       properties:
         CFBundleDisplayName: NM7 TV
-        CFBundleShortVersionString: "1.0.72"
-        CFBundleVersion: "72"
+        CFBundleShortVersionString: "1.0.73"
+        CFBundleVersion: "73"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
