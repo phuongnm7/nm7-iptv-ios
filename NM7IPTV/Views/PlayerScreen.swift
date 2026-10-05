@@ -4,6 +4,7 @@ import UIKit
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ObservedObject var model: AppViewModel
     let initialChannel: Channel
 
@@ -26,7 +27,7 @@ struct PlayerScreen: View {
     var body: some View {
         GeometryReader { geometry in
             let landscape = geometry.size.width > geometry.size.height
-            let split = NM7DeviceProfile.isPad && landscape && geometry.size.width >= 700
+            let split = NM7DeviceProfile.isPad && horizontalSizeClass != .compact && landscape && geometry.size.width >= 700
 
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -233,11 +234,18 @@ private struct ChannelLogoMini: View {
             Circle().fill(NM7Theme.surface)
 
             if let data, let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(Circle())
-                    .padding(3)
+                if ChannelLogoResolver.isAffected(channel) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(2)
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(Circle())
+                        .padding(3)
+                }
             } else {
                 Image(systemName: "tv.fill").foregroundStyle(NM7Theme.accent)
             }
