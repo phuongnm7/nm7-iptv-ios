@@ -75,3 +75,27 @@ final class M3UParserTests: XCTestCase {
         XCTAssertTrue(M3UParser.parse("#EXTM3U\n#EXTINF:-1,Invalid\nnot a url").channels.isEmpty)
     }
 }
+    
+    func testVTVBackupWidevineIsReplacedByNonDRMHLS() throws {
+        let input = """
+        #EXTM3U
+        #EXTINF:-1 tvg-id="vtv9hd" group-title="VTV",VTV9
+        https://example.com/vtv9.m3u8
+
+        #EXTINF:-1 tvg-id="vstv455" group-title="Dự phòng",VTV9
+        #KODIPROP:inputstream.adaptive.manifest_type=mpd
+        #KODIPROP:inputstream.adaptive.license_type=widevine
+        #KODIPROP:inputstream.adaptive.license_key=https://license.example/key
+        https://example.com/backup/vtv9/manifest.mpd
+        """
+
+        let result = M3UParser.parse(input)
+        let backup = try XCTUnwrap(result.channels.first(where: { $0.group == "VTV dự phòng" }))
+
+        XCTAssertEqual(backup.name, "VTV9")
+        XCTAssertEqual(backup.streamURL.absoluteString, "https://example.com/vtv9.m3u8")
+        XCTAssertTrue(backup.isHLS)
+        XCTAssertFalse(backup.isLikelyDRM)
+        XCTAssertTrue(backup.options.contains("#NM7-IOS-VTV-BACKUP-HLS"))
+    }
+}
