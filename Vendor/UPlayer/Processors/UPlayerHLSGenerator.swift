@@ -637,8 +637,27 @@ private extension UPlayerHLSGenerator {
             return ""
         }
         
-        media = media.replacingOccurrences(of: "$Number$",
-                                           with: "\(number)")
+        // DASH permits formatted template identifiers such as $Number%04d$.
+        // Expand them before emitting the HLS playlist; AVPlayer cannot resolve
+        // DASH template syntax in a media playlist URI.
+        let numberPattern = #"$Number(?:%0?(\\d+)d)?$"#
+        if let regex = try? NSRegularExpression(pattern: numberPattern) {
+            let searchRange = NSRange(media.startIndex..., in: media)
+            for match in regex.matches(in: media, range: searchRange).reversed() {
+                guard let tokenRange = Range(match.range, in: media) else { continue }
+                let width: Int
+                if match.range(at: 1).location != NSNotFound,
+                   let widthRange = Range(match.range(at: 1), in: media) {
+                    width = Int(media[widthRange]) ?? 0
+                } else {
+                    width = 0
+                }
+                let replacement = width > 0
+                    ? String(format: "%0*d", width, number)
+                    : "\(number)"
+                media.replaceSubrange(tokenRange, with: replacement)
+            }
+        }
         
         media = media.replacingOccurrences(of: "$RepresentationID$",
                                            with: representation.id)
