@@ -1,96 +1,70 @@
 # NM7 IPTV cho iPhone & iPad
 
-Ứng dụng IPTV native dành cho **iPhone và iPad**, được xây dựng trên nền chuẩn **NM7 TV Android 1.0.69** để giữ cùng hệ thống chức năng và trải nghiệm, nhưng dùng API native phù hợp với iOS/iPadOS.
+Ứng dụng IPTV native cho **iPhone/iPad**, dùng SwiftUI + AVPlayer + MobileVLCKit và custom CENC/ClearKey pipeline.
 
-## Trạng thái hiện tại
+## Trạng thái hiện tại — 2026-10-05
 
-- **Phiên bản:** 1.0.69
-- **Bundle version:** 69
-- **Nền tham chiếu:** NM7 TV Android 1.0.69
-- **Android reference commit:** `f79fc06009f20e0ac3a5859c0abcfd6ce70a6763`
-- **iOS branch:** `release/ios-1.0.69-final-drm-v2`
-- **Latest source commit:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`
+- **Phiên bản đang phát triển:** 1.0.72
+- **Bundle version:** 72
+- **Branch:** `fix/ios-1.0.71-real-clearkey-navigation`
+- **Mục tiêu mốc này:** sửa toàn bộ đường phát nhóm **Thể thao**, hoàn thiện điều hướng iPhone/iPad và tiếp tục xác thực **DASH/ClearKey CENC**.
 - **Nền tảng:** iOS/iPadOS 16+
-- **Thiết bị:** iPhone + iPad
-- **UI:** SwiftUI
-- **Player chính:** AVPlayer
-- **Player dự phòng:** MobileVLCKit / VLC
-- **Repository:** Public để sử dụng GitHub-hosted macOS runner
+- **Player:** AVPlayer cho HLS/MP4/FairPlay; MobileVLCKit cho luồng IPTV trực tiếp; custom CENC processor cho ClearKey DASH.
+- **Không coi CI xanh là bằng chứng DRM đã chạy trên thiết bị thật.**
 
-> **CẢNH BÁO TRẠNG THÁI:** GitHub Actions hiện có run #15 **SUCCESS** ở mức build/package và unit test. Tuy nhiên, điều đó **không đồng nghĩa bản app đã chạy đúng trên iPhone/iPad thật**. Theo kết quả kiểm tra thực tế hiện tại, các lỗi runtime trước đây vẫn còn và bản iOS 1.0.69 **chưa được coi là hoàn thành**.
+### Tiến độ mới nhất
 
-## Mục tiêu của bản iOS 1.0.69
+1. **Nhóm Thể thao:** đã xác định nguyên nhân quan trọng ở tầng player: nhiều URL thể thao là HTTP MPEG-TS/direct IPTV, không có đuôi `.ts` và không phải HLS/DASH. iOS AVPlayer không nên là engine đầu tiên cho nhóm này.
+2. **Engine routing:** bổ sung phân loại `Channel.prefersVLC`; luồng HTTP/HTTPS trực tiếp không phải HLS/DASH được chuyển thẳng sang MobileVLCKit. Các URL `.ts`, portal `play/live.php`, RTSP/RTMP/UDP/SRT cũng được hỗ trợ.
+3. **VLC:** thêm reconnect/continuous HTTP và truyền User-Agent/Referer/Cookie từ playlist.
+4. **ClearKey:** real public DASH/CENC smoke test hiện **PASS** trên CI. Điều này xác nhận MPD/segment thật có thể được tải và giải mã theo test pipeline; chưa phải bằng chứng AVPlayer trên iPhone thật đã phát ổn định.
+5. **UI/điều hướng:** đã có adaptive iPhone/iPad, edge-swipe mở menu, điều hướng bằng phím mũi tên/Return/Escape và focus channel.
+6. **Player UI:** bề mặt VideoPlayer đã được giữ cho cả AVPlayer và custom DASH/ClearKey engine.
 
-Bản này lấy **Android TV 1.0.69 làm source of truth về chức năng và hành vi**, sau đó chuyển từng phần sang iOS native:
+## CI hiện tại
 
-- Màn hình chính và hệ thống nhóm kênh.
-- Truyền hình, Thể thao, Tất cả kênh.
-- Yêu thích và Gần đây.
-- Tìm kiếm và tìm bằng giọng nói.
-- Quản lý nhiều nguồn IPTV và tải lại playlist.
-- Logo và card kênh.
-- Player/fullscreen và chuyển kênh.
-- Cache và khôi phục playlist.
+Run mới nhất đang xử lý commit:
 
-## Player iOS
+`91da7a383c4530ad7376366a91416197aa088da0`
 
-**AVPlayer → player native chính** cho HLS/MP4 tương thích iOS.
+Pipeline **NM7 IPTV iOS 1.0.72 SPORTS VLC + CLEARKEY v4** đã chạy qua:
+- Install build tools — PASS
+- Real public ClearKey DASH/CENC smoke — PASS
+- Prepare assets — PASS
+- Generate workspace — PASS
+- Simulator build — đang chạy/đang xác minh ở thời điểm cập nhật tài liệu
 
-**MobileVLCKit/VLC → fallback** khi AVPlayer không mở được hoặc bị stall kéo dài.
+Một run ngay trước đó đã FAIL ở Simulator build do source lúc đó gọi `shouldPreferVLC`/`startVLC` trước khi helper được đưa đầy đủ vào cùng commit. Lỗi này đã được xác định; source hiện tại đã chứa hai helper đó. **Không sử dụng run FAIL cũ để kết luận source hiện tại hỏng.**
 
-App truyền các header hợp lệ của playlist như User-Agent, Referer và Cookie khi cần.
+## DRM — giới hạn kỹ thuật
 
-Đối với **DASH/ClearKey CENC**, app có đường xử lý native: MPD → fragmented MP4/HLS → giải mã sample CENC bằng ClearKey → AVPlayer. Parser CENC đã được sửa nhiều vòng để đọc `tenc`, `senc`, `trun`, `saiz/saio` và nhiều `moof`. Tuy nhiên, **end-to-end runtime trên thiết bị thật vẫn chưa đạt**, nên chưa được xác nhận là đã phát DRM ổn định.
+- **ClearKey CENC:** app có custom pipeline MPD → fragmented MP4/CENC → decrypt → player.
+- **FairPlay:** dùng API native của Apple khi stream cung cấp FairPlay.
+- **Widevine/PlayReady:** không được giả định là có CDM native trên iOS. App không thể biến một stream Widevine/PlayReady thành ClearKey chỉ bằng sửa parser.
+- Chỉ đánh dấu DRM hoàn thành sau khi có bằng chứng runtime trên iPhone/iPad thật.
 
-Với Widevine/PlayReady, app không giả định rằng build thành công đồng nghĩa đã có CDM tương ứng.
+## Thể thao — nguyên tắc xử lý
 
-## Các vấn đề còn tồn tại — cần xử lý tiếp
+Playlist thể thao hiện được build tự động từ nhiều nguồn. CI của playlist hiện xác nhận các nguồn A/B và `sources/sport-selected.m3u` đều được đọc, với các entry thể thao không có ngày vẫn được giữ lại.
 
-Theo kết quả kiểm tra hiện tại, bản iOS vẫn còn các lỗi runtime đã được phản ánh trước đó:
+Trong app:
+- HLS/DASH → AVPlayer/custom DASH path.
+- HTTP MPEG-TS/direct IPTV → MobileVLCKit.
+- Có header → truyền header tương ứng sang engine.
+- Không chờ AVPlayer 8 giây rồi mới fallback đối với stream đã được xác định ngay từ đầu là direct IPTV.
 
-- **DASH/ClearKey DRM chưa phát ổn định trên iPhone/iPad thật.**
-- Đường **MPD → HLS/fMP4 → CENC decrypt → AVPlayer** chưa có bằng chứng runtime end-to-end trên thiết bị thật.
-- Một số stream DRM/định dạng trước đây không phát được vẫn chưa được xác nhận đã khắc phục hoàn toàn.
-- Cần tiếp tục đối chiếu **giao diện với Android TV 1.0.69**, bao gồm vị trí điều khiển, trạng thái player và hình nền mặc định.
-- Không được đánh dấu “hoàn thành” chỉ dựa trên việc CI xanh.
+## Chưa được đánh dấu hoàn thành
 
-## Những gì đã được sửa trong source nhưng chưa coi là đã giải quyết hoàn toàn
+- Chưa có xác nhận cuối cùng trên iPhone/iPad thật cho **toàn bộ nhóm Thể thao**.
+- Chưa có xác nhận cuối cùng rằng **mọi** stream ClearKey thực tế trong playlist thể thao đều phát được.
+- IPA chỉ được công bố khi pipeline build + unit tests + device build + package hoàn tất.
 
-- Sửa vị trí đọc `default_KID` / `default_Per_Sample_IV_Size` của `tenc`.
-- Bổ sung đọc constant IV.
-- Bổ sung kiểm tra số sample giữa `senc` và `trun`.
-- Bổ sung xử lý `saiz/saio` khi không có `senc`.
-- Bổ sung xử lý nhiều `moof` trong một SegmentBase resource.
-- Thêm nhánh CENC/CBCS trong processor.
-- Không để `MPDToMP4Resolver` bỏ qua media resource processor CENC.
-- Bỏ spinner cố định phủ trên video.
-- Đưa microphone/fullscreen/favorite vào video pane để tránh chồng vùng nhóm.
-- Thêm unit test cho ClearKey inline `KID:KEY` và named-pair.
+## Quy tắc phát triển
 
-Các thay đổi trên là **các bước kỹ thuật đã triển khai**, không phải bằng chứng rằng mọi lỗi runtime đã hết.
+- Không sửa Android để giải quyết lỗi iOS.
+- Android là source of truth về chức năng/hành vi.
+- Mọi lỗi player phải được khoanh vùng ở URL/format/header/DRM/engine trước khi sửa UI.
+- Không dùng synthetic unit test để tuyên bố DRM runtime đã hoàn thành.
+- Không phát hành IPA khi CI chưa qua device build/package.
 
-## CI / build
-
-- **Run #15:** SUCCESS toàn bộ pipeline CI, gồm Simulator build, Unit Tests, Device Release build, Package IPA và Upload artifact.
-- **Commit của run #15:** `1f481d5833cbcf3256c716afb00d69ac659fef4e`.
-- Run #14 trước đó FAIL tại CENC unit test do parser `trun` đọc sai vị trí FullBox; lỗi đó đã được sửa ở commit sau.
-- Run #15 chỉ chứng minh rằng source hiện tại **build được, test tự động hiện tại pass và đóng gói được**.
-
-## Build & cài đặt
-
-IPA iOS được đóng gói ở dạng **unsigned**. Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
-
-## Nguyên tắc phát triển
-
-- Android TV 1.0.69 là **source of truth về chức năng và hành vi**.
-- iOS/iPadOS dùng API native phù hợp với Apple.
-- Không làm thay đổi dự án Android.
-- Không tiếp tục vòng lặp sửa DRM Safari của bản web trong nhánh iOS này.
-- Không coi build CI xanh là bằng chứng phát được DRM trên thiết bị thật.
-- Mọi thay đổi DRM quan trọng phải có test parser/decrypt và sau đó phải được kiểm tra runtime bằng stream DASH/ClearKey hợp lệ.
-
-## Tiến độ
-
-**Chưa hoàn thành.** Source hiện tại đã có một lượng lớn xử lý CENC/ClearKey và CI run #15 đã xanh, nhưng lỗi runtime mà người dùng đang gặp vẫn chưa được giải quyết dứt điểm. Mốc tiếp theo phải tập trung vào **nguyên nhân khiến stream DASH/ClearKey thực tế vẫn không phát**, thay vì tiếp tục chỉ làm cho build xanh.
-
-Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
+Xem nhật ký chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
