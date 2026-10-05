@@ -3,7 +3,6 @@ import SwiftUI
 struct RootView: View {
     @ObservedObject var model: AppViewModel
     @State private var showMenu = false
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         GeometryReader { proxy in
@@ -41,6 +40,17 @@ struct RootView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .animation(.easeInOut(duration: 0.20), value: showMenu)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24)
+                    .onEnded { value in
+                        let startedAtLeftEdge = value.startLocation.x < 42
+                        if startedAtLeftEdge && value.translation.width > 90 {
+                            openMenu()
+                        } else if showMenu && value.translation.width < -90 {
+                            closeMenu()
+                        }
+                    }
+            )
         }
         .fullScreenCover(item: $model.selectedChannel) { channel in
             PlayerScreen(model: model, initialChannel: channel)
