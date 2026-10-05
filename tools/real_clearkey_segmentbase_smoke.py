@@ -57,7 +57,7 @@ def nested(data, wanted, start=0, end=None):
     out = []
     for p, size, typ, hdr in boxes(data, start, end):
         if typ == wanted: out.append((p, size, typ, hdr))
-        if typ in {"moov","trak","mdia","minf","stbl","stsd","mvex","moof","traf","sinf","schi"}:
+        if typ in {"moov","trak","mdia","minf","stbl","stsd","mvex","moof","traf","sinf","schi","encv","enca","avc1","avc2","avc3","avc4","hvc1","hev1","hev2","hev3","hev4","av01","vp09","mp4a","ac-3","ec-3"}:
             out.extend(nested(data, wanted, p+hdr, p+size))
     return out
 
