@@ -377,7 +377,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
     private func parseSAIZ(_ data: Data, box: Box) throws -> [Int] {
         let flags = fullBoxFlags(data, box)
-        var cursor = box.contentStart
+        var cursor = box.contentStart + 4
 
         if (flags & 0x000001) != 0 {
             guard cursor + 8 <= box.end else { throw error("saiz thiếu aux_info_type.") }
@@ -406,7 +406,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
     private func parseSAIO(_ data: Data, box: Box) throws -> [UInt64] {
         let flags = fullBoxFlags(data, box)
-        var cursor = box.contentStart
+        var cursor = box.contentStart + 4
 
         if (flags & 0x000001) != 0 {
             guard cursor + 8 <= box.end else { throw error("saio thiếu aux_info_type.") }
@@ -442,7 +442,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         defaultSampleSize: Int
     ) throws -> (Int, [Int]) {
         let flags = fullBoxFlags(data, box)
-        var cursor = box.contentStart
+        var cursor = box.contentStart + 4
         guard cursor + 4 <= box.end else { throw error("trun thiếu sample count.") }
         let count = Int(readUInt32(data, cursor))
         cursor += 4
@@ -485,7 +485,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         constantIV: Data?
     ) throws -> SENCResult {
         let flags = fullBoxFlags(data, box)
-        var cursor = box.contentStart
+        var cursor = box.contentStart + 4
 
         var kid = defaultKID
         var ivSize = defaultIVSize
