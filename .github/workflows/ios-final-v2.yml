@@ -77,7 +77,7 @@ jobs:
           test -f "$APP/nm7_default_background_new.webp"
           test -f "$APP/Assets.car"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | grep -Fx "1.0.71"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion: "71""
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" | grep -Fx "71"
 
       - name: Package IPA
         run: |
