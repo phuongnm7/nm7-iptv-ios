@@ -48,9 +48,9 @@ struct Channel: Identifiable, Codable, Hashable {
     }
 
     private static func stableID(name: String, url: URL, headers: [String: String], options: [String]) -> String {
-        var value = "(name)|(url.absoluteString)"
+        var value = "\(name)|\(url.absoluteString)"
         for key in headers.keys.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
-            value += "|(key)=(headers[key] ?? "")"
+            value += "|\(key)=\(headers[key] ?? "")"
         }
         value += "|" + options.joined(separator: "|")
         return Data(value.utf8).base64EncodedString()
