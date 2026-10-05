@@ -98,23 +98,42 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
         var pairs: [String: Data] = [:]
 
-        // Android 1.0.69 accepts provider "named pair" syntax:
-        // kid=...&key=... (also k=...), optionally repeated with ; or |.
+        // Android 1.0.69 accepts provider named-pair syntax in either
+        // parameter order: kid=...&key=... or key=...&kid=....
         if clean.localizedCaseInsensitiveContains("kid=") {
-            var currentKID: Data?
-            for field in clean.split(whereSeparator: { $0 == "&" || $0 == ";" || $0 == "|" || $0 == "," }) {
+            var pendingKID: Data?
+            var pendingKey: Data?
+
+            func commitPending() {
+                guard let kid = pendingKID, let key = pendingKey else { return }
+                pairs[kid.base64URLEncodedString] = key
+                pendingKID = nil
+                pendingKey = nil
+            }
+
+            for field in clean.split(whereSeparator: {
+                $0 == "&" || $0 == ";" || $0 == "|" || $0 == ","
+            }) {
                 let pieces = field.split(separator: "=", maxSplits: 1).map(String.init)
                 guard pieces.count == 2 else { continue }
-                let name = pieces[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let name = pieces[0]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
                 let raw = pieces[1].removingPercentEncoding ?? pieces[1]
-                if name == "kid" {
-                    currentKID = decodeKeyID(raw)
-                } else if name == "key" || name == "k",
-                          let kid = currentKID,
-                          let key = decodeKey(raw) {
-                    pairs[kid.base64URLEncodedString] = key
+
+                switch name {
+                case "kid":
+                    if pendingKID != nil && pendingKey != nil { commitPending() }
+                    pendingKID = decodeKeyID(raw)
+                case "key", "k":
+                    if pendingKey != nil && pendingKID != nil { commitPending() }
+                    pendingKey = decodeKey(raw)
+                default:
+                    break
                 }
             }
+            commitPending()
+
             if !pairs.isEmpty { return pairs }
         }
 
