@@ -295,6 +295,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 sampleOffset += size
             }
         }
+        }
 
         return output
     }
@@ -675,7 +676,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 throw error("CBCS subsample vượt sample.")
             }
             cursor += range.clear
-            try decryptRange(cursor, range.encrypted, &cryptor)
+            try decryptRange(cursor, range.encrypted, cryptor: &cryptor)
             cursor += range.encrypted
         }
     }
