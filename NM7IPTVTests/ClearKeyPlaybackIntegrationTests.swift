@@ -29,6 +29,11 @@ final class ClearKeyPlaybackIntegrationTests: XCTestCase {
             }
 
             let item = player.activeAVPlayer.currentItem
+            if item?.status == .failed {
+                XCTFail("ClearKey AVPlayerItem failed: \(item?.error?.localizedDescription ?? "unknown error")")
+                return
+            }
+
             let position = player.activeAVPlayer.currentTime().seconds
             if item?.status == .readyToPlay,
                player.activeAVPlayer.timeControlStatus == .playing,
