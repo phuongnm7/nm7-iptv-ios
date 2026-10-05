@@ -3,6 +3,7 @@ import UIKit
 
 struct ChannelCardView: View {
     let channel: Channel
+    @FocusState.Binding var focusedChannelID: String?
     let isFavorite: Bool
     let isPlaying: Bool
     let metrics: NM7Theme.Metrics
@@ -61,6 +62,7 @@ struct ChannelCardView: View {
             }
         }
         .buttonStyle(.plain)
+        .focused($focusedChannelID, equals: channel.id)
         .focused($focused)
         .scaleEffect(focused ? 1.06 : 1)
         .animation(.easeOut(duration: 0.12), value: focused)
