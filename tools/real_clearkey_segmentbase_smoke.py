@@ -260,7 +260,11 @@ def run_candidate(c):
     adaptation=None
     for a in children(period,"AdaptationSet"):
         mime=(a.attrib.get("mimeType") or "").lower()
-        if mime.startswith("video/") or a.attrib.get("contentType","").lower()=="video":
+        ctype=(a.attrib.get("contentType") or "").lower()
+        reps=children(a,"Representation")
+        rep_video=any((r.attrib.get("mimeType") or "").lower().startswith("video/") for r in reps)
+        has_video_component=any((x.attrib.get("contentType") or "").lower()=="video" for x in children(a,"ContentComponent"))
+        if ctype=="video" or mime.startswith("video/") or rep_video or has_video_component:
             adaptation=a; break
     if adaptation is None: raise RuntimeError("video AdaptationSet not found")
     rep=children(adaptation,"Representation")[0]
