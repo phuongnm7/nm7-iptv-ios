@@ -30,7 +30,10 @@ final class ClearKeyPlaybackIntegrationTests: XCTestCase {
 
             let item = player.activeAVPlayer.currentItem
             if item?.status == .failed {
-                XCTFail("ClearKey AVPlayerItem failed: \(item?.error?.localizedDescription ?? "unknown error")")
+                let events = item?.errorLog()?.events.map {
+                    "uri=\($0.uri ?? "none"), status=\($0.errorStatusCode), domain=\($0.errorDomain), comment=\($0.errorComment ?? "none")"
+                }.joined(separator: " | ") ?? "no AVPlayer error events"
+                XCTFail("ClearKey AVPlayerItem failed: \(item?.error?.localizedDescription ?? "unknown error"); \(events)")
                 return
             }
 
