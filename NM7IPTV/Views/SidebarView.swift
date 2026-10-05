@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var model: AppViewModel
+    var onClose: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -38,7 +39,10 @@ struct SidebarView: View {
                 }
 
                 Section("Tiện ích") {
-                    Button { model.openYouTube() } label: {
+                    Button {
+                        model.openYouTube()
+                        onClose()
+                    } label: {
                         Label("YouTube", systemImage: "play.rectangle.fill")
                     }
 
@@ -53,7 +57,10 @@ struct SidebarView: View {
 
     private func sidebarButton(_ section: AppViewModel.Section, icon: String) -> some View {
         Button {
-            Task { await model.selectSection(section) }
+            Task {
+                await model.selectSection(section)
+                onClose()
+            }
         } label: {
             Label(section.rawValue, systemImage: icon)
                 .font(.system(size: 15, weight: section == model.section ? .bold : .medium))
