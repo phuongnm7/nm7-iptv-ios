@@ -3,6 +3,29 @@ import XCTest
 @testable import NM7IPTV
 
 final class ClearKeyPlaybackIntegrationTests: XCTestCase {
+    func testGetOutKodiClearKeySportsEntryParsesForIOS() throws {
+        // Mirrors the playlist syntax without embedding any user's stream URL or keys.
+        let playlist = """
+        #EXTM3U
+        #EXTINF:-1 tvg-id="sports.test" group-title="VTVCab / Thể Thao",Sports test
+        #X-GETOUT-CHANNEL-INDEX:14
+        #KODIPROP:inputstream=inputstream.adaptive
+        #KODIPROP:inputstream.adaptive.manifest_type=mpd
+        #KODIPROP:inputstream.adaptive.license_type=clearkey
+        #KODIPROP:inputstream.adaptive.license_key=kid=00112233445566778899aabbccddeeff&key=ffeeddccbbaa99887766554433221100
+        https://example.invalid/live/manifest.mpd
+        """
+
+        let result = M3UParser.parse(playlist)
+        let channel = try XCTUnwrap(result.channels.first)
+
+        XCTAssertEqual(channel.name, "Sports test")
+        XCTAssertEqual(channel.group, "VTVCab / Thể Thao")
+        XCTAssertTrue(channel.isDASH)
+        XCTAssertEqual(DRMInfo.from(options: channel.options).system, .clearKey)
+        XCTAssertEqual(ClearKeyContentKeySession.parsePairs(DRMInfo.from(options: channel.options).licenseValue).count, 1)
+    }
+
     @MainActor
     func testPublicClearKeyDASHAdvancesPlayback() async throws {
         let channel = Channel(
@@ -21,6 +44,11 @@ final class ClearKeyPlaybackIntegrationTests: XCTestCase {
 
     @MainActor
     func testRealOnSportsChannelsFromPublicTelevisionPlaylist() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["NM7_RUN_LIVE_CHANNEL_SMOKE"] == "1",
+            "Live channel availability depends on provider authorization and CI region; set NM7_RUN_LIVE_CHANNEL_SMOKE=1 to run explicitly."
+        )
+
         let playlistURL = URL(string: "https://raw.githubusercontent.com/phuongnm7/Iptv-phuongnm7/main/IPTV_Gop_VMTTV_vAppTV.m3u")!
         var request = URLRequest(url: playlistURL)
         request.timeoutInterval = 20
