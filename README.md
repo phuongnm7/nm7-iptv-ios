@@ -14,7 +14,7 @@
 - **UI:** SwiftUI
 - **Player chính:** AVPlayer
 - **Player dự phòng:** MobileVLCKit / VLC
-- **CI:** GitHub Actions — run #26 đã build, unit test và validate unsigned IPA thành công.
+- **CI cuối cùng đã xác minh:** run #41 (`a4ee550c...`) build Simulator, unit tests, device build và unsigned IPA thành công trước khi bổ sung CENC.
 
 ## Mục tiêu của bản iOS 1.0.69
 
@@ -41,9 +41,7 @@ App truyền các header hợp lệ của playlist như User-Agent, Referer và 
 
 ## Build & cài đặt
 
-GitHub Actions hiện đã tạo artifact:
-
-`NM7-IPTV-iOS-1.0.69-unsigned-IPA`
+GitHub Actions đã từng tạo artifact IPA unsigned ở các mốc trước. **Bản source hiện tại chưa được phát hành IPA mới** vì runner của GitHub Actions đang bị từ chối trước step build.
 
 Artifact này là IPA **chưa ký**. Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
 
@@ -57,6 +55,6 @@ Artifact này là IPA **chưa ký**. Để cài trên iPhone/iPad thực tế c�
 
 ## Tiến độ
 
-Đã hoàn thành nền tảng 1.0.69, metadata version và pipeline build IPA. Công việc tiếp theo là hoàn thiện độ tương đồng giao diện/hành vi với Android TV 1.0.69 và kiểm thử playback thực tế trên iPhone/iPad.
+Đã hoàn thiện nền tảng UI/player, metadata version, header propagation và pipeline đóng gói. Đã bổ sung đường xử lý DASH/ClearKey CENC ở source. Việc phát hành IPA cuối đang chờ GitHub Actions chạy được trên repository private để thực hiện build/validate thực tế.
 
 Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
