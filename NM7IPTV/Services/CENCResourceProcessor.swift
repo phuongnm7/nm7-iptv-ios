@@ -47,19 +47,20 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         super.init()
 
         let pairs = ClearKeyContentKeySession.parsePairs(drm.licenseValue)
-        for (kidString, key) in pairs {
+        let parsedKeys: [String: Data]
+        if pairs.isEmpty, let data = drm.licenseValue.data(using: .utf8),
+           let jwk = try? ClearKeyContentKeySession.parseJWK(data) {
+            parsedKeys = jwk.compactMapValues { $0 }
+        } else {
+            parsedKeys = pairs
+        }
+        lock.lock()
+        for (kidString, key) in parsedKeys {
             if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
                 keys[base64URL(kid)] = key
             }
         }
-        if pairs.isEmpty, let data = drm.licenseValue.data(using: .utf8),
-           let jwk = try? ClearKeyContentKeySession.parseJWK(data) {
-            for (kidString, key) in jwk {
-                if let kid = ClearKeyContentKeySession.decodeKeyID(kidString) {
-                    keys[base64URL(kid)] = key
-                }
-            }
-        }
+        lock.unlock()
     }
 
     func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data {
@@ -102,12 +103,15 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
             guard parsed.isProtected == 1 else { continue }
 
-            tracks[trackID] = TrackInfo(
+            let info = TrackInfo(
                 kid: parsed.kid,
                 ivSize: parsed.ivSize,
                 constantIV: parsed.constantIV,
                 defaultSampleSize: trexDefaultSizes[trackID] ?? 0
             )
+            lock.lock()
+            tracks[trackID] = info
+            lock.unlock()
         }
     }
 
@@ -175,7 +179,10 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             }
 
             let trackID = readUInt32(source, tfhd.contentStart + 4)
-            guard let info = tracks[trackID] else {
+            lock.lock()
+            let info = tracks[trackID]
+            lock.unlock()
+            guard let info else {
                 // No tenc in the initialization segment means this track is not
                 // one of the CENC tracks handled by this processor.
                 continue
