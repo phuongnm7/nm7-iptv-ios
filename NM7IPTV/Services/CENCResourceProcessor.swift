@@ -419,6 +419,17 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         }
     }
 
+    private func clearSampleEntryType(_ data: Data, _ box: Box) -> String {
+        if let frma = findRawBox(type: "frma", in: data, range: box.contentStart..<box.end),
+           frma.contentStart + 4 <= frma.end {
+            return String(
+                data: data.subdata(in: frma.contentStart..<(frma.contentStart + 4)),
+                encoding: .ascii
+            ) ?? (box.type == "enca" ? "mp4a" : "avc1")
+        }
+        return box.type == "enca" ? "mp4a" : "avc1"
+    }
+
     private func rewriteAllBoxTypes(_ data: inout Data, from: String, to: String) {
         let source = Array(from.utf8)
         let target = Array(to.utf8)
