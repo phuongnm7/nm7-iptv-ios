@@ -415,10 +415,15 @@ extension UPlayerAVAssetResourceLoader {
         }
         
         let available = data.count - start
-        let requested = dataRequest.requestedLength
-        let length = min(requested, available)
+        let length = dataRequest.requestsAllDataToEndOfResource
+            ? available
+            : min(dataRequest.requestedLength, available)
+
         if length > 0 {
             dataRequest.respond(with: data.subdata(in: start..<(start + length)))
+        } else if available > 0 {
+            loadingRequest.finishLoading(with: UPlayerError.assetLoadingFailed)
+            return
         }
         
         loadingRequest.finishLoading()
