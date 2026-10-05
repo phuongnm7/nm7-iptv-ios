@@ -242,6 +242,56 @@ final class CENCResourceProcessorTests: XCTestCase {
     }
 
 
+    func testCENCDecryptsMediaByteRangeWithNonZeroAbsoluteSourceOffset() async throws {
+        let keyHex = "ffeeddccbbaa99887766554433221100"
+        let kidHex = "00112233445566778899aabbccddeeff"
+        let iv = Data(hex: "00112233445566778899aabbccddeeff")
+        let ciphertext = Data(hex: "94073fd2b9d7fd5a3f6e42407e0d358742e1f1154484b1be22cf16ea75dcdb70")
+        let expected = Data("NM7-CENC-TEST-PAYLOAD-1234567890".utf8)
+
+        let drm = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=\(kidHex):\(keyHex)"
+        ])
+        let processor = CENCResourceProcessor(drm: drm, headers: [:])
+
+        let tkhd = makeFullBoxBox(type: "tkhd", version: 0, flags: 0, body: {
+            var body = Data(repeating: 0, count: 12)
+            body.replaceSubrange(8..<12, with: [0, 0, 0, 1])
+            return body
+        }())
+        let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 16, kid: Data(hex: kidHex))
+        let moov = makeBox("moov", makeBox("trak", tkhd + tenc))
+
+        let prefix = Data(repeating: 0xA5, count: 37)
+        var template = makeFragment(iv: iv, ciphertext: ciphertext, dataOffset: 0)
+        let dataOffset = Int32(template.count + 8)
+        template = makeFragment(iv: iv, ciphertext: ciphertext, dataOffset: dataOffset)
+        let full = prefix + template + makeBox("mdat", ciphertext)
+
+        _ = try await processor.processMediaData(
+            moov,
+            sourceURL: URL(string: "https://example.test/init.mp4")!,
+            sourceOffset: 0
+        )
+
+        let mediaRangeStart = Int64(prefix.count)
+        let media = full.subdata(in: prefix.count..<full.count)
+
+        let result = try await processor.processMediaData(
+            media,
+            sourceURL: URL(string: "https://example.test/full.mp4")!,
+            sourceOffset: mediaRangeStart
+        )
+
+        let localPayloadOffset = Int(dataOffset)
+        XCTAssertEqual(
+            result.subdata(in: localPayloadOffset..<(localPayloadOffset + expected.count)),
+            expected
+        )
+    }
+
+
     private func makeFragment(iv: Data, ciphertext: Data, dataOffset: Int32) -> Data {
         let tfhd = makeFullBoxBox(type: "tfhd", version: 0, flags: 0, body: Data([0, 0, 0, 1]))
         let senc = makeFullBoxBox(type: "senc", version: 0, flags: 0, body: Data([0, 0, 0, 1]) + iv)
