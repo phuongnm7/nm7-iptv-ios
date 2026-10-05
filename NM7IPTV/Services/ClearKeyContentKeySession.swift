@@ -35,13 +35,13 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
     }
 
     func contentKeySession(_ session: AVContentKeySession,
-                           shouldRetryContentKeyRequest keyRequest: AVContentKeyRequest,
+                           shouldRetry keyRequest: AVContentKeyRequest,
                            reason retryReason: AVContentKeyRequest.RetryReason) -> Bool {
         true
     }
 
     func contentKeySession(_ session: AVContentKeySession,
-                           didProvidePersistableContentKeyRequest keyRequest: AVPersistableContentKeyRequest) {
+                           didProvide keyRequest: AVPersistableContentKeyRequest) {
         keyRequest.processContentKeyResponseError(
             NSError(domain: "NM7ClearKey", code: 4,
                     userInfo: [NSLocalizedDescriptionKey: "ClearKey không dùng persistable content key."])
