@@ -160,7 +160,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             }
             var sampleOffset = dataOffset
 
-            for index in 0..<count {
+            for index in 0..<entries.count {
                 let size = sampleSizes[index]
                 guard size > 0, sampleOffset >= 0, sampleOffset + size <= output.count else {
                     throw error("CENC sample range không hợp lệ.")
