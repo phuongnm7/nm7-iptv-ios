@@ -2,10 +2,12 @@ import SwiftUI
 
 struct HomeView: View {
     @ObservedObject var model: AppViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = NM7Theme.Metrics.resolve(width: proxy.size.width, isPad: NM7DeviceProfile.isPad)
+            let widePadLayout = NM7DeviceProfile.isPad && horizontalSizeClass != .compact
+            let metrics = NM7Theme.Metrics.resolve(width: proxy.size.width, isPad: widePadLayout)
 
             ZStack {
                 NM7BackgroundView()
