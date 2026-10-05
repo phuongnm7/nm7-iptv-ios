@@ -70,6 +70,17 @@ final class ChannelPlayer: NSObject, ObservableObject {
         errorMessage = nil
         isLoading = true
 
+        if channel.hasExpiredSignedURL() {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "vi_VN")
+            formatter.timeZone = .current
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            let expiredAt = channel.signedURLExpirationDate.map(formatter.string(from:)) ?? ""
+            showError("Liên kết kênh đã hết hạn (\(expiredAt)). Hãy làm mới playlist hoặc lấy URL mới từ nguồn.")
+            return
+        }
+
         let drm = DRMInfo.from(options: channel.options)
         var headers = channel.httpHeaders
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
@@ -328,7 +339,22 @@ private final class DashPlayerBridge: NSObject, UPlayerDelegate {
     func didEventPlayerStop(source: UPlayerProtocol, error: Error?) {
         Task { @MainActor in
             owner?.setLoading(false)
-            if let error { owner?.showError("DASH/ClearKey: \(error.localizedDescription)") }
+            if let error {
+                let message: String
+                if let playerError = error as? UPlayerError,
+                   case .invalidHTTPResponse(let status) = playerError {
+                    if status == 401 || status == 403 {
+                        message = "Nguồn kênh từ chối truy cập (HTTP \(status)). Link có thể hết hạn hoặc thiếu quyền truy cập."
+                    } else if status < 0 {
+                        message = "Không nhận được phản hồi HTTP từ nguồn kênh. Hãy kiểm tra URL và kết nối mạng."
+                    } else {
+                        message = "Nguồn kênh trả về HTTP \(status)."
+                    }
+                } else {
+                    message = error.localizedDescription
+                }
+                owner?.showError("DASH/ClearKey: \(message)")
+            }
         }
     }
     func didEventPlayerChange(source: UPlayerProtocol, isPaused: Bool) {}
