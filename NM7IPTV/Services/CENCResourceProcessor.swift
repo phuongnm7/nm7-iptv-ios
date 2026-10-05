@@ -23,6 +23,12 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let subsamples: [(clear: Int, encrypted: Int)]?
     }
 
+    private struct SENCResult {
+        let entries: [SENCEntry]
+        let kid: Data
+        let ivSize: Int
+    }
+
     private let drm: DRMInfo
     private let headers: [String: String]
     private let session: URLSession
@@ -203,35 +209,41 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             )
 
             let trafChildren = childBoxes(source, parent: traf)
-            let entries: [SENCEntry]
+            let encryption: SENCResult
             if let senc = trafChildren.first(where: { $0.type == "senc" }) {
-                entries = try parseSENC(
+                encryption = try parseSENC(
                     source,
                     box: senc,
-                    ivSize: info.ivSize,
+                    defaultKID: info.kid,
+                    defaultIVSize: info.ivSize,
                     constantIV: info.constantIV
                 )
             } else if let saiz = trafChildren.first(where: { $0.type == "saiz" }),
                       let saio = trafChildren.first(where: { $0.type == "saio" }) {
-                entries = try parseAuxiliaryEncryption(
-                    source,
-                    saiz: saiz,
-                    saio: saio,
-                    baseOffset: baseOffset,
-                    ivSize: info.ivSize,
-                    constantIV: info.constantIV,
-                    sampleCount: sampleSizes.count
+                encryption = SENCResult(
+                    entries: try parseAuxiliaryEncryption(
+                        source,
+                        saiz: saiz,
+                        saio: saio,
+                        baseOffset: baseOffset,
+                        ivSize: info.ivSize,
+                        constantIV: info.constantIV,
+                        sampleCount: sampleSizes.count
+                    ),
+                    kid: info.kid,
+                    ivSize: info.ivSize
                 )
             } else {
                 throw error("CENC fragment thiếu senc hoặc saiz/saio cho track \(trackID).")
             }
 
-            guard entries.count == sampleSizes.count else {
-                throw error("CENC encryption/sample count không khớp (enc=\(entries.count), trun=\(sampleSizes.count)).")
+            let key = try await key(for: encryption.kid)
+            guard encryption.entries.count == sampleSizes.count else {
+                throw error("CENC encryption/sample count không khớp (enc=\(encryption.entries.count), trun=\(sampleSizes.count)).")
             }
 
             var sampleOffset = dataOffset
-            for index in 0..<entries.count {
+            for index in 0..<encryption.entries.count {
                 let size = sampleSizes[index]
                 guard size > 0, sampleOffset >= 0, sampleOffset + size <= output.count else {
                     throw error("CENC sample range không hợp lệ.")
@@ -240,8 +252,8 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 var sample = output.subdata(in: sampleOffset..<(sampleOffset + size))
                 try decryptSample(
                     &sample,
-                    key: try await key(for: info.kid),
-                    iv: entries[index].iv,
+                    key: key,
+                    iv: encryption.entries[index].iv,
                     subsamples: entries[index].subsamples
                 )
                 output.replaceSubrange(sampleOffset..<(sampleOffset + size), with: sample)
@@ -429,9 +441,32 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         return (dataOffset, sizes)
     }
 
-    private func parseSENC(_ data: Data, box: Box, ivSize: Int, constantIV: Data?) throws -> [SENCEntry] {
+    private func parseSENC(
+        _ data: Data,
+        box: Box,
+        defaultKID: Data,
+        defaultIVSize: Int,
+        constantIV: Data?
+    ) throws -> SENCResult {
         let flags = fullBoxFlags(data, box)
         var cursor = box.contentStart
+
+        var kid = defaultKID
+        var ivSize = defaultIVSize
+
+        // override-track-encryption-parameters.
+        // The override fields are: AlgorithmID(3), IVSize(1), KID(16).
+        if (flags & 0x000001) != 0 {
+            guard cursor + 20 <= box.end else {
+                throw error("senc thiếu tham số mã hóa ghi đè.")
+            }
+            cursor += 3 // AlgorithmID; AES-CTR is the CENC family handled here.
+            ivSize = Int(data[cursor])
+            cursor += 1
+            kid = data.subdata(in: cursor..<(cursor + 16))
+            cursor += 16
+        }
+
         guard cursor + 4 <= box.end else { throw error("senc thiếu sample count.") }
         let count = Int(readUInt32(data, cursor))
         cursor += 4
@@ -469,7 +504,8 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             }
             result.append(SENCEntry(iv: iv, subsamples: subs))
         }
-        return result
+
+        return SENCResult(entries: result, kid: kid, ivSize: ivSize)
     }
 
     private func decryptSample(
