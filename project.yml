@@ -14,8 +14,12 @@ targets:
     type: application
     platform: iOS
     sources:
-      - NM7IPTV
-      - Vendor/UPlayer
+      - path: NM7IPTV
+        excludes:
+          - project.yml
+      - path: Vendor/UPlayer
+        excludes:
+          - UPlayer.podspec
     info:
       path: NM7IPTV/Info.plist
       properties:
