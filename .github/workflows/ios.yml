@@ -28,6 +28,8 @@ jobs:
       - name: Prepare bundled visual assets
         run: |
           set -euo pipefail
+          # Android TV 1.0.69 source-of-truth wallpaper must stay bundled.
+          test -s NM7IPTV/Resources/nm7_default_background_new.webp
           test -s NM7IPTV/Resources/nm7_default_background.jpg
           test -s NM7IPTV/Resources/nm7_tv_launcher_android.png
           mkdir -p NM7IPTV/Assets.xcassets/AppIcon.appiconset
