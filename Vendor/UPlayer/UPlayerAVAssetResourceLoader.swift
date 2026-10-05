@@ -220,7 +220,7 @@ private extension UPlayerAVAssetResourceLoader {
 
         if let range {
             request.setValue(
-                "bytes=\\(range.lowerBound)-\\(range.upperBound)",
+                "bytes=\(range.lowerBound)-\(range.upperBound)",
                 forHTTPHeaderField: "Range"
             )
         }
