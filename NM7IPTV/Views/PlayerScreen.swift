@@ -76,26 +76,20 @@ struct PlayerScreen: View {
             VLCVideoSurface(channelPlayer: channelPlayer)
                 .opacity(channelPlayer.engine == .vlc ? 1 : 0)
 
-            if channelPlayer.isLoading || !channelPlayer.statusMessage.isEmpty {
-                VStack(spacing: 8) {
-                    if channelPlayer.isLoading { ProgressView().tint(NM7Theme.accent) }
-                    if !channelPlayer.statusMessage.isEmpty {
-                        Text(channelPlayer.statusMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                    }
-                }
-                .padding(16)
-                .background(.black.opacity(0.74), in: RoundedRectangle(cornerRadius: 14))
-                .frame(maxWidth: 360)
+            if channelPlayer.isLoading {
+                ProgressView()
+                    .tint(NM7Theme.accent)
+                    .padding(14)
+                    .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
             }
 
             if showControls {
                 HStack {
                     playerButton("backward.end.fill") { changeChannel(by: -1) }
                     Spacer()
-                    playerButton(channelPlayer.isPlaying ? "pause.fill" : "play.fill") {
+                    playerButton(
+                        channelPlayer.engine == .avPlayer && channelPlayer.player.timeControlStatus == .playing ? "pause.fill" : "play.fill"
+                    ) {
                         channelPlayer.togglePlayPause()
                     }
                     Spacer()
