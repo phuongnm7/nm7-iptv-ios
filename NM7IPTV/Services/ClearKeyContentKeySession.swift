@@ -18,7 +18,11 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let keyID = Self.keyID(for: keyRequest, preferred: self.localPairs.keys.first.flatMap(Self.decodeKeyID))
+                let preferredKID: Data? = {
+                    let pairs = self.localPairs
+                    return pairs.count == 1 ? pairs.keys.first.flatMap(Self.decodeKeyID) : nil
+                }()
+                let keyID = Self.keyID(for: keyRequest, preferred: preferredKID)
                 let keyData = try await self.obtainKeyData(keyID: keyID)
                 keyRequest.processContentKeyResponse(
                     AVContentKeyResponse(clearKeyData: keyData, initializationVector: nil)
@@ -57,9 +61,13 @@ final class ClearKeyContentKeySession: NSObject, AVContentKeySessionDelegate {
             throw NSError(domain: "NM7ClearKey", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "ClearKey thiếu KID/KEY hoặc license URL."])
         }
-        if let direct = try? await requestLicense(url: licenseURL, keyID: keyID, method: "GET"),
-           let key = direct.first?.value {
-            return key
+        if let direct = try? await requestLicense(url: licenseURL, keyID: keyID, method: "GET") {
+            if let keyID, let key = direct[keyID.base64URLEncodedString] {
+                return key
+            }
+            if direct.count == 1, let key = direct.values.first {
+                return key
+            }
         }
         guard let keyID else {
             throw NSError(domain: "NM7ClearKey", code: 2,
