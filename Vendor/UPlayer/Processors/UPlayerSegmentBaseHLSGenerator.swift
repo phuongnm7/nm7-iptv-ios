@@ -76,7 +76,7 @@ public final class UPlayerSegmentBaseHLSGenerator: UPlayerAssetProcessorProtocol
                         return
                     }
 
-                    var mediaPlaylists = try await self.generateMediaPlaylists(manifest: manifest)
+                    var mediaPlaylists = try await self.generateMediaPlaylists(manifest: manifest, headers: asset.httpHeaders)
 
                     let thumbnailPlaylists = self.generateThumbnailPlaylists(manifest: manifest)
                     for (key, playlist) in thumbnailPlaylists {
@@ -120,7 +120,7 @@ public final class UPlayerSegmentBaseHLSGenerator: UPlayerAssetProcessorProtocol
 
 private extension UPlayerSegmentBaseHLSGenerator {
     
-    func generateMediaPlaylists(manifest: DASHManifest) async throws -> [String: String] {
+    func generateMediaPlaylists(manifest: DASHManifest, headers: [String: String]) async throws -> [String: String] {
         var result: [String: String] = [:]
         
         for period in manifest.periods {
@@ -135,7 +135,8 @@ private extension UPlayerSegmentBaseHLSGenerator {
                     guard let playlist = try await generate(manifest: manifest,
                                                             period: period,
                                                             adaptation: adaptation,
-                                                            representation: representation) else {
+                                                            representation: representation,
+                                                            headers: headers) else {
                         continue
                     }
                     
@@ -151,7 +152,8 @@ private extension UPlayerSegmentBaseHLSGenerator {
     func generate(manifest: DASHManifest,
                   period: DASHPeriod,
                   adaptation: DASHAdaptationSet,
-                  representation: DASHRepresentation) async throws -> String? {
+                  representation: DASHRepresentation,
+                  headers: [String: String]) async throws -> String? {
         
         guard
             let segmentBase = representation.segmentBase,
@@ -166,7 +168,8 @@ private extension UPlayerSegmentBaseHLSGenerator {
         }
         
         let sidxData = try await RemoteByteRangeLoader.load(url: mediaURL,
-                                                            range: indexRange)
+                                                            range: indexRange,
+                                                            headers: headers)
         
         let sidx = try MP4SIDXParser.parse(data: sidxData)
         
