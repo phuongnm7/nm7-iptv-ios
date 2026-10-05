@@ -164,7 +164,7 @@ def trex_default(init,track):
 def decrypt(sample,key,iv,subs,scheme,crypt,skip):
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     if scheme in ("cenc","cbc1"):
-        counter=iv+(b"\\0"*8) if len(iv)==8 else iv
+        counter=iv+(b"\x00"*8) if len(iv)==8 else iv
         if len(counter)!=16: raise RuntimeError("CTR IV không hợp lệ")
         c=Cipher(algorithms.AES(key),modes.CTR(counter)).encryptor()
         out=bytearray(sample)
