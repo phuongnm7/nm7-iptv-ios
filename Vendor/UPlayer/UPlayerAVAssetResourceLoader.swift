@@ -26,6 +26,8 @@ public protocol UPlayerAVAssetResourceLoaderTranscodingDelegate: AnyObject {
 public protocol UPlayerAVAssetResourceLoaderProtocol: AVAssetResourceLoaderDelegate {
     var dataDelegate: UPlayerAVAssetResourceLoaderDelegate? { get set }
     var transcoderDelegate: UPlayerAVAssetResourceLoaderTranscodingDelegate? { get set }
+    var mediaRequestHeader: [String: Any]? { get set }
+    var mediaResourceProcessor: UPlayerMediaResourceProcessor? { get set }
 }
 
 internal final class UPlayerAVAssetResourceLoader: NSObject, UPlayerAVAssetResourceLoaderProtocol {
