@@ -506,7 +506,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         baseOffset: Int,
         fallback: Int,
         defaultSampleSize: Int
-    ) throws -> (Int, [Int]) {
+    ) throws -> (offset: Int, sizes: [Int]) {
         let flags = fullBoxFlags(data, box)
         var cursor = box.contentStart + 4
         guard cursor + 4 <= box.end else { throw error("trun thiếu sample count.") }
