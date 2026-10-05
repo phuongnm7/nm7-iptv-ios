@@ -76,15 +76,14 @@ def parse_tenc(init):
         if box_start+32 <= len(init):
             size=struct.unpack_from(">I",init,box_start)[0]
             if size >= 32 and box_start+size <= len(init):
-                # FullBox payload starts after size+type.
-                b=box_start+8
-                version=init[b]
-                pattern=init[b+5] if version>=1 else init[b+1]
-                # For tenc: version/flags[4], pattern/reserved/isProtected/ivSize/kid.
-                pattern=init[b+1]
-                protected=init[b+2]
-                iv_size=init[b+3]
-                kid=init[b+4:b+20]
+                # FullBox header is 4 bytes. tenc body is:
+                # reserved, pattern(v1+) or reserved(v0), isProtected,
+                # per-sample-IV-size, default_KID[16].
+                version=init[box_start+8]
+                pattern=init[box_start+13]
+                protected=init[box_start+14]
+                iv_size=init[box_start+15]
+                kid=init[box_start+16:box_start+32]
                 crypt=((pattern>>4)&15) if version>=1 else 0
                 skip=(pattern&15) if version>=1 else 0
                 return version,protected,iv_size,kid,crypt,skip
