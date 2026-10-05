@@ -224,7 +224,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                     // Encrypted media must never silently pass through to AVPlayer.
                     // If the init segment has not established tenc state yet, fail
                     // explicitly so the caller can report the real CENC state error.
-                    throw error("CENC chưa có track-encryption state cho track (trackID). Hãy tải init segment trước media segment.")
+                    throw error("CENC chưa có track-encryption state cho track \(trackID). Hãy tải init segment trước media segment.")
                 }
 
                 let tfhdFlags = fullBoxFlags(source, tfhd)
