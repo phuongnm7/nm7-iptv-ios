@@ -611,7 +611,9 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         }
 
         func store(_ candidates: [String: Data]) -> Data? {
-            let value = candidates[id] ?? candidates.values.first
+            // Never substitute a different KID when a license contains
+            // multiple keys. A single-key response may safely satisfy this KID.
+            let value = candidates[id] ?? (candidates.count == 1 ? candidates.values.first : nil)
             if let value {
                 lock.lock()
                 keys[id] = value
