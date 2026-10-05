@@ -2,37 +2,31 @@ import SwiftUI
 
 struct RootView: View {
     @ObservedObject var model: AppViewModel
+    @State private var showMenu = false
 
     var body: some View {
-        Group {
-            if NM7DeviceProfile.isPad {
-                iPadRoot
-            } else {
-                iPhoneRoot
-            }
+        NavigationStack {
+            detail
+                .navigationBarHidden(true)
+                .ignoresSafeArea()
         }
         .tint(NM7Theme.accent)
         .fullScreenCover(item: $model.selectedChannel) { channel in
             PlayerScreen(model: model, initialChannel: channel)
         }
-    }
-
-    private var iPadRoot: some View {
-        NavigationSplitView {
-            SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 270, max: 310)
-        } detail: {
-            NavigationStack { detail }
+        .sheet(isPresented: $showMenu) {
+            NavigationStack {
+                SidebarView(model: model)
+            }
         }
-    }
-
-    private var iPhoneRoot: some View {
-        NavigationStack {
-            detail
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    MobileBottomBar(model: model)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 28)
+                .onEnded { value in
+                    guard value.startLocation.x < 28,
+                          value.translation.width > 90 else { return }
+                    showMenu = true
                 }
-        }
+        )
     }
 
     @ViewBuilder
