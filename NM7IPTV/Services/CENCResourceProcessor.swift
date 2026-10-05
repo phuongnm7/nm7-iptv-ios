@@ -182,119 +182,185 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     private func decryptFragments(_ source: Data) async throws -> Data {
         let moofs = topLevelBoxes("moof", in: source)
         guard !moofs.isEmpty else { return source }
+
         var output = source
 
         for moof in moofs {
             for traf in childBoxes(source, parent: moof).filter({ $0.type == "traf" }) {
-            guard let tfhd = childBoxes(source, parent: traf).first(where: { $0.type == "tfhd" }),
-                  let trun = childBoxes(source, parent: traf).first(where: { $0.type == "trun" }) else {
-                continue
-            }
-
-            let trackID = readUInt32(source, tfhd.contentStart + 4)
-            lock.lock()
-            let info = tracks[trackID]
-            lock.unlock()
-            guard let info else {
-                // No tenc in the initialization segment means this track is not
-                // one of the CENC tracks handled by this processor.
-                continue
-            }
-
-            let tfhdFlags = fullBoxFlags(source, tfhd)
-            var tfhdCursor = tfhd.contentStart + 4
-            tfhdCursor += 4 // track_ID
-
-            var baseOffset = moof.offset
-            if (tfhdFlags & 0x000001) != 0 {
-                guard tfhdCursor + 8 <= tfhd.end else {
-                    throw error("tfhd thiếu base-data-offset.")
+                guard let tfhd = childBoxes(source, parent: traf).first(where: { $0.type == "tfhd" }) else {
+                    continue
                 }
-                let raw = readUInt64(source, tfhdCursor)
-                guard raw <= UInt64(Int.max) else {
-                    throw error("tfhd base-data-offset quá lớn.")
-                }
-                baseOffset = Int(raw)
-                tfhdCursor += 8
-            }
-            if (tfhdFlags & 0x000002) != 0 { tfhdCursor += 4 }
 
-            var defaultSampleSize = 0
-            if (tfhdFlags & 0x000008) != 0 { tfhdCursor += 4 }
-            if (tfhdFlags & 0x000010) != 0 {
+                let truns = childBoxes(source, parent: traf).filter { $0.type == "trun" }
+                guard !truns.isEmpty else {
+                    throw error("CENC traf thiếu trun.")
+                }
+
+                let trackID = readUInt32(source, tfhd.contentStart + 4)
+                lock.lock()
+                let info = tracks[trackID]
+                lock.unlock()
+
+                guard let info else {
+                    // Encrypted media must never silently pass through to AVPlayer.
+                    // If the init segment has not established tenc state yet, fail
+                    // explicitly so the caller can report the real CENC state error.
+                    throw error("CENC chưa có track-encryption state cho track (trackID). Hãy tải init segment trước media segment.")
+                }
+
+                let tfhdFlags = fullBoxFlags(source, tfhd)
+                var tfhdCursor = tfhd.contentStart + 4
                 guard tfhdCursor + 4 <= tfhd.end else {
-                    throw error("tfhd thiếu default sample size.")
+                    throw error("tfhd thiếu track_ID.")
                 }
-                defaultSampleSize = Int(readUInt32(source, tfhdCursor))
                 tfhdCursor += 4
-            }
-            if defaultSampleSize == 0 {
-                defaultSampleSize = info.defaultSampleSize
-            }
 
-            let (dataOffset, sampleSizes) = try parseTRUN(
-                source,
-                box: trun,
-                baseOffset: baseOffset,
-                fallback: moof.end,
-                defaultSampleSize: defaultSampleSize
-            )
-
-            let trafChildren = childBoxes(source, parent: traf)
-            let encryption: SENCResult
-            if let senc = trafChildren.first(where: { $0.type == "senc" }) {
-                encryption = try parseSENC(
-                    source,
-                    box: senc,
-                    defaultKID: info.kid,
-                    defaultIVSize: info.ivSize,
-                    constantIV: info.constantIV
-                )
-            } else if let saiz = trafChildren.first(where: { $0.type == "saiz" }),
-                      let saio = trafChildren.first(where: { $0.type == "saio" }) {
-                encryption = SENCResult(
-                    entries: try parseAuxiliaryEncryption(
-                        source,
-                        saiz: saiz,
-                        saio: saio,
-                        baseOffset: baseOffset,
-                        ivSize: info.ivSize,
-                        constantIV: info.constantIV,
-                        sampleCount: sampleSizes.count
-                    ),
-                    kid: info.kid,
-                    ivSize: info.ivSize
-                )
-            } else {
-                throw error("CENC fragment thiếu senc hoặc saiz/saio cho track \(trackID).")
-            }
-
-            guard encryption.entries.count == sampleSizes.count else {
-                throw error("CENC encryption/sample count không khớp (enc=\(encryption.entries.count), trun=\(sampleSizes.count)).")
-            }
-
-            let key = try await key(for: encryption.kid)
-            var sampleOffset = dataOffset
-            for index in 0..<encryption.entries.count {
-                let size = sampleSizes[index]
-                guard size > 0, sampleOffset >= 0, sampleOffset + size <= output.count else {
-                    throw error("CENC sample range không hợp lệ.")
+                // base_data_offset_present
+                var baseOffset = moof.offset
+                if (tfhdFlags & 0x000001) != 0 {
+                    guard tfhdCursor + 8 <= tfhd.end else {
+                        throw error("tfhd thiếu base-data-offset.")
+                    }
+                    let raw = readUInt64(source, tfhdCursor)
+                    guard raw <= UInt64(Int.max) else {
+                        throw error("tfhd base-data-offset quá lớn.")
+                    }
+                    baseOffset = Int(raw)
+                    tfhdCursor += 8
+                } else if (tfhdFlags & 0x020000) != 0 {
+                    // default-base-is-moof: offsets are anchored at moof.
+                    baseOffset = moof.offset
+                } else {
+                    // For the SegmentBase/CMAF resources generated by NM7, the
+                    // effective fragment base is still the containing moof.
+                    baseOffset = moof.offset
                 }
 
-                var sample = output.subdata(in: sampleOffset..<(sampleOffset + size))
-                try decryptSample(
-                    &sample,
-                    key: key,
-                    iv: encryption.entries[index].iv,
-                    subsamples: encryption.entries[index].subsamples,
-                    scheme: info.scheme,
-                    cryptBlock: info.cryptBlock,
-                    skipBlock: info.skipBlock
-                )
-                output.replaceSubrange(sampleOffset..<(sampleOffset + size), with: sample)
-                sampleOffset += size
+                if (tfhdFlags & 0x000002) != 0 {
+                    guard tfhdCursor + 4 <= tfhd.end else {
+                        throw error("tfhd thiếu sample-description-index.")
+                    }
+                    tfhdCursor += 4
+                }
+
+                var defaultSampleSize = 0
+                if (tfhdFlags & 0x000008) != 0 {
+                    guard tfhdCursor + 4 <= tfhd.end else {
+                        throw error("tfhd thiếu default-sample-duration.")
+                    }
+                    tfhdCursor += 4
+                }
+                if (tfhdFlags & 0x000010) != 0 {
+                    guard tfhdCursor + 4 <= tfhd.end else {
+                        throw error("tfhd thiếu default-sample-size.")
+                    }
+                    defaultSampleSize = Int(readUInt32(source, tfhdCursor))
+                    tfhdCursor += 4
+                }
+                if (tfhdFlags & 0x000020) != 0 {
+                    guard tfhdCursor + 4 <= tfhd.end else {
+                        throw error("tfhd thiếu default-sample-flags.")
+                    }
+                    tfhdCursor += 4
+                }
+
+                // A traf may legally contain more than one trun. Keep each run's
+                // data offset while sharing one encryption-entry sequence.
+                var runs: [(offset: Int, sizes: [Int])] = []
+                var fallbackOffset = moof.end
+
+                for trun in truns {
+                    let parsed = try parseTRUN(
+                        source,
+                        box: trun,
+                        baseOffset: baseOffset,
+                        fallback: fallbackOffset,
+                        defaultSampleSize: defaultSampleSize
+                    )
+                    runs.append(parsed)
+                    let runBytes = parsed.sizes.reduce(0, +)
+                    guard parsed.offset >= 0,
+                          runBytes >= 0,
+                          parsed.offset <= Int.max - runBytes else {
+                        throw error("CENC trun data range quá lớn.")
+                    }
+                    fallbackOffset = parsed.offset + runBytes
+                }
+
+                let sampleCount = runs.reduce(0) { $0 + $1.sizes.count }
+                guard sampleCount > 0 else {
+                    throw error("CENC fragment không có sample.")
+                }
+
+                let trafChildren = childBoxes(source, parent: traf)
+                let encryption: SENCResult
+
+                if let senc = trafChildren.first(where: { $0.type == "senc" }) {
+                    encryption = try parseSENC(
+                        source,
+                        box: senc,
+                        defaultKID: info.kid,
+                        defaultIVSize: info.ivSize,
+                        constantIV: info.constantIV
+                    )
+                } else if let saiz = trafChildren.first(where: { $0.type == "saiz" }),
+                          let saio = trafChildren.first(where: { $0.type == "saio" }) {
+                    encryption = SENCResult(
+                        entries: try parseAuxiliaryEncryption(
+                            source,
+                            saiz: saiz,
+                            saio: saio,
+                            baseOffset: baseOffset,
+                            ivSize: info.ivSize,
+                            constantIV: info.constantIV,
+                            sampleCount: sampleCount
+                        ),
+                        kid: info.kid,
+                        ivSize: info.ivSize
+                    )
+                } else {
+                    throw error("CENC fragment thiếu senc hoặc saiz/saio cho track (trackID).")
+                }
+
+                guard encryption.entries.count == sampleCount else {
+                    throw error("CENC encryption/sample count không khớp (enc=\(encryption.entries.count), trun=\(sampleCount)).")
+                }
+
+                let key = try await key(for: encryption.kid)
+                var encryptionIndex = 0
+
+                for run in runs {
+                    var sampleOffset = run.offset
+
+                    for size in run.sizes {
+                        guard size > 0,
+                              sampleOffset >= 0,
+                              sampleOffset + size <= output.count else {
+                            throw error("CENC sample range không hợp lệ.")
+                        }
+
+                        var sample = output.subdata(in: sampleOffset..<(sampleOffset + size))
+                        let entry = encryption.entries[encryptionIndex]
+
+                        try decryptSample(
+                            &sample,
+                            key: key,
+                            iv: entry.iv,
+                            subsamples: entry.subsamples,
+                            scheme: info.scheme,
+                            cryptBlock: info.cryptBlock,
+                            skipBlock: info.skipBlock
+                        )
+
+                        output.replaceSubrange(
+                            sampleOffset..<(sampleOffset + size),
+                            with: sample
+                        )
+                        sampleOffset += size
+                        encryptionIndex += 1
+                    }
+                }
             }
-        }
         }
 
         return output
