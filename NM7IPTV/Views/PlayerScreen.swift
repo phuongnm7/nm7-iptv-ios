@@ -11,6 +11,7 @@ struct PlayerScreen: View {
     @State private var current: Channel
     @State private var group: String
     @State private var showControls = true
+    @State private var isFullScreen = false
     @StateObject private var channelPlayer = ChannelPlayer()
 
     init(model: AppViewModel, initialChannel: Channel) {
@@ -27,12 +28,15 @@ struct PlayerScreen: View {
     var body: some View {
         GeometryReader { geometry in
             let landscape = geometry.size.width > geometry.size.height
-            let split = NM7DeviceProfile.isPad && horizontalSizeClass != .compact && landscape && geometry.size.width >= 700
+            let split = !isFullScreen && NM7DeviceProfile.isPad && horizontalSizeClass != .compact && landscape && geometry.size.width >= 700
 
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if split {
+                if isFullScreen {
+                    videoPane
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                } else if split {
                     HStack(spacing: 0) {
                         videoPane
                         channelPanel.frame(width: min(380, max(300, geometry.size.width * 0.32)))
@@ -151,13 +155,23 @@ struct PlayerScreen: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
+            Button {
+                if isFullScreen {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isFullScreen = false
+                        showControls = true
+                    }
+                } else {
+                    dismiss()
+                }
+            } label: {
+                Image(systemName: isFullScreen ? "arrow.down.left.and.arrow.up.right" : "chevron.left")
                     .font(.headline.weight(.bold))
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(.borderedProminent)
             .tint(.black.opacity(0.75))
+            .accessibilityLabel(isFullScreen ? "Thoát toàn màn hình" : "Đóng trình phát")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(current.name)
@@ -171,11 +185,25 @@ struct PlayerScreen: View {
 
             Spacer()
 
-            if !NM7DeviceProfile.isPhone {
+            if !NM7DeviceProfile.isPhone && !isFullScreen {
                 VoiceSearchButton { transcript in
                     if let match = model.bestVoiceMatch(for: transcript) { play(match) }
                 }
             }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isFullScreen.toggle()
+                    showControls = true
+                }
+            } label: {
+                Image(systemName: isFullScreen
+                    ? "arrow.down.right.and.arrow.up.left"
+                    : "arrow.up.left.and.arrow.down.right")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.black.opacity(0.75))
+            .accessibilityLabel(isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình")
 
             Button { model.toggleFavorite(current) } label: {
                 Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
