@@ -70,7 +70,7 @@ struct SettingsView: View {
             cacheMessage = "Đã xóa cache playlist."
         } catch {
             cacheMessage = FileManager.default.fileExists(atPath: cache.path)
-                ? "Không thể xóa cache: (error.localizedDescription)"
+                ? "Không thể xóa cache: \(error.localizedDescription)"
                 : "Cache playlist không tồn tại."
         }
     }
