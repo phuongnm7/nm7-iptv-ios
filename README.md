@@ -9,12 +9,16 @@
 - **Nền tham chiếu:** NM7 TV Android 1.0.69
 - **Android reference commit:** `f79fc06009f20e0ac3a5859c0abcfd6ce70a6763`
 - **iOS branch:** `feat/ios-1.0.69-android-baseline`
+- **Latest verified commit:** `d00b0f8bd818cbc79eb1d17f7a351eee272d002b`
 - **Nền tảng:** iOS/iPadOS 16+
 - **Thiết bị:** iPhone + iPad
 - **UI:** SwiftUI
 - **Player chính:** AVPlayer
 - **Player dự phòng:** MobileVLCKit / VLC
-- **CI cuối cùng đã xác minh:** run #41 (`a4ee550c...`) build Simulator, unit tests, device build và unsigned IPA thành công trước khi bổ sung CENC.
+- **Repository:** Public để sử dụng GitHub-hosted macOS runner
+- **CI cuối cùng đã xác minh:** **run #147 — SUCCESS toàn bộ**: Simulator build, unit tests, Device Release build, Package IPA và Upload artifact.
+- **IPA cuối:** unsigned, SHA256 `1fdb08eb4e803cc79148a3269bbd8b2ae65f5062f6b40d0ff75d3832374a4fb8`
+- **Artifact:** `NM7-IPTV-iOS-1.0.69-final-unsigned-IPA` (ID `11334156283`)
 
 ## Mục tiêu của bản iOS 1.0.69
 
@@ -41,9 +45,9 @@ App truyền các header hợp lệ của playlist như User-Agent, Referer và 
 
 ## Build & cài đặt
 
-GitHub Actions đã từng tạo artifact IPA unsigned ở các mốc trước. **Bản source hiện tại chưa được phát hành IPA mới** vì runner của GitHub Actions đang bị từ chối trước step build.
+GitHub Actions đã xác minh thành công bản iOS 1.0.69 ở **run #147**. IPA cuối là bản **unsigned** và đã được kiểm tra integrity, version và executable sau khi đóng gói.
 
-Artifact này là IPA **chưa ký**. Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
+Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
 
 ## Nguyên tắc phát triển
 
@@ -55,6 +59,6 @@ Artifact này là IPA **chưa ký**. Để cài trên iPhone/iPad thực tế c�
 
 ## Tiến độ
 
-Đã hoàn thiện nền tảng UI/player, metadata version, header propagation và pipeline đóng gói. Đã bổ sung đường xử lý DASH/ClearKey CENC ở source. Việc phát hành IPA cuối đang chờ GitHub Actions chạy được trên repository private để thực hiện build/validate thực tế.
+Đã hoàn thiện nền tảng UI/player, metadata version, header propagation và pipeline đóng gói. Đã bổ sung đường xử lý DASH/ClearKey CENC ở source. Workflow hiện đã chạy thành công trên macOS runner; **run #147 đã build, test và đóng gói IPA 1.0.69 thành công**.
 
 Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
