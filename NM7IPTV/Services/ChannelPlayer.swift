@@ -114,7 +114,13 @@ final class ChannelPlayer: NSObject, ObservableObject {
 
         let dash = UPlayer()
         dash.requestHeaders = headers
-        let processor = CENCResourceProcessor(drm: drm, headers: headers)
+        let processorHeaders = drm.licenseHeaders.merging(headers) { _, channelValue in
+            channelValue
+        }
+        let processor = CENCResourceProcessor(
+            drm: drm,
+            headers: processorHeaders
+        )
         cencProcessor = processor
         dash.mediaResourceProcessor = processor
         let queue = UPlayerAssetProcessorsQueue()
