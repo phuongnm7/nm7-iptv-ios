@@ -74,7 +74,7 @@ final class M3UParserTests: XCTestCase {
     func testIgnoresInvalidEntries() {
         XCTAssertTrue(M3UParser.parse("#EXTM3U\n#EXTINF:-1,Invalid\nnot a url").channels.isEmpty)
     }
-}
+
     
     func testVTVBackupWidevineIsReplacedByNonDRMHLS() throws {
         let input = """
