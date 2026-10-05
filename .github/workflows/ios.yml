@@ -30,10 +30,10 @@ jobs:
           set -euo pipefail
           mkdir -p NM7IPTV/Resources NM7IPTV/Assets.xcassets/AppIcon.appiconset
           curl -L --fail --retry 3 --connect-timeout 15 --max-time 60 \
-            "https://github.com/phuongnm7/nm7-tv-android/raw/refs/tags/v1.0.69-fast-vtvcab-logo-16/app/src/main/res/drawable/nm7_default_background.jpg" \
+            "https://raw.githubusercontent.com/phuongnm7/nm7-tv-android/f79fc06009f20e0ac3a5859c0abcfd6ce70a6763/app/src/main/res/drawable/nm7_default_background.jpg" \
             -o NM7IPTV/Resources/nm7_default_background.jpg
           curl -L --fail --retry 3 --connect-timeout 15 --max-time 60 \
-            "https://github.com/phuongnm7/nm7-tv-android/raw/refs/tags/v1.0.69-fast-vtvcab-logo-16/app/src/main/res/mipmap-xxxhdpi/nm7_tv_launcher.png" \
+            "https://raw.githubusercontent.com/phuongnm7/nm7-tv-android/f79fc06009f20e0ac3a5859c0abcfd6ce70a6763/app/src/main/res/mipmap-xxxhdpi/nm7_tv_launcher.png" \
             -o NM7IPTV/Resources/nm7_tv_launcher_android.png
           sips -z 1024 1024 NM7IPTV/Resources/nm7_tv_launcher_android.png --out NM7IPTV/Assets.xcassets/AppIcon.appiconset/AppIcon.png
           cat > NM7IPTV/Assets.xcassets/Contents.json <<'EOF'
