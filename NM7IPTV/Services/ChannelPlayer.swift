@@ -5,7 +5,6 @@ import UIKit
 
 enum ChannelPlayerEngine: Equatable { case avPlayer, vlc }
 
-@MainActor
 final class ChannelPlayer: NSObject, ObservableObject {
 
     let player = AVPlayer()
@@ -270,7 +269,7 @@ extension DRMInfo.System {
 }
 
 extension ChannelPlayer: VLCMediaPlayerDelegate {
-    nonisolated func mediaPlayerStateChanged(_ aNotification: Notification!) {
+    func mediaPlayerStateChanged(_ aNotification: Notification!) {
         Task { @MainActor [weak self] in
             guard let self, self.engine == .vlc else { return }
 
@@ -295,5 +294,5 @@ extension ChannelPlayer: VLCMediaPlayerDelegate {
         }
     }
 
-    nonisolated func mediaPlayerTimeChanged(_ aNotification: Notification!) {}
+    func mediaPlayerTimeChanged(_ aNotification: Notification!) {}
 }
