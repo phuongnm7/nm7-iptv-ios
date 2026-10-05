@@ -18,7 +18,21 @@ struct Channel: Identifiable, Codable, Hashable {
     }
     var isDASH: Bool {
         let url = streamURL.absoluteString.lowercased()
-        return url.contains(".mpd") || options.contains { $0.lowercased().contains("manifest_type=mpd") }
+        if url.contains(".mpd") {
+            return true
+        }
+        if options.contains({
+            $0.lowercased().contains("manifest_type=mpd") ||
+            $0.lowercased().contains("manifest_type=dash")
+        }) {
+            return true
+        }
+
+        // Some TV360/VTVcab entries intentionally hide the MPD behind a
+        // redirect/wrapper URL. When DRM metadata says ClearKey/Widevine and
+        // the URL is not already an HLS resource, route it through the DASH
+        // engine so the wrapper can be resolved to its actual MPD.
+        return isLikelyDRM && !isHLS
     }
     var isLikelyDRM: Bool {
         options.contains { $0.lowercased().contains("license") || $0.lowercased().contains("drm") }
