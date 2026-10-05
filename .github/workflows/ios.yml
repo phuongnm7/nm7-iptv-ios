@@ -1,5 +1,9 @@
 name: Build NM7 IPTV iOS
 
+concurrency:
+  group: nm7-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
