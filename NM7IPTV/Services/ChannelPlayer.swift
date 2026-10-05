@@ -76,13 +76,20 @@ final class ChannelPlayer: NSObject, ObservableObject {
             headers["User-Agent"] = "NM7-TV-iOS/1.0.69"
         }
 
-        if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
-            showError("Nguồn dùng DRM không được iOS engine hỗ trợ trực tiếp. Chỉ FairPlay hoặc ClearKey được xử lý khi playlist cung cấp đầy đủ thông tin.")
+        // DASH is handled by the native CENC/CBCS resource processor only for
+        // unencrypted or ClearKey streams. Widevine/PlayReady still require
+        // a device CDM that is not part of this native pipeline.
+        if channel.isDASH {
+            if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
+                showError("Kênh DASH đang dùng Widevine/PlayReady. iOS 1.0.70 chỉ xử lý DASH không mã hóa hoặc ClearKey.")
+                return
+            }
+            startDASH(channel: channel, drm: drm)
             return
         }
 
-        if channel.isDASH {
-            startDASH(channel: channel, drm: drm)
+        if drm.system == .widevine || drm.system == .playReady || drm.system == .unknown {
+            showError("Nguồn dùng DRM không được iOS engine hỗ trợ trực tiếp. Chỉ FairPlay hoặc ClearKey được xử lý khi playlist cung cấp đầy đủ thông tin.")
             return
         }
 
