@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "0.3.0"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "1.0.69"
+    CURRENT_PROJECT_VERSION: "69"
     DEVELOPMENT_TEAM: ""
 targets:
   NM7IPTV:
@@ -18,7 +18,7 @@ targets:
     info:
       path: NM7IPTV/Info.plist
       properties:
-        CFBundleDisplayName: NM7 IPTV
+        CFBundleDisplayName: NM7 TV
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -29,13 +29,17 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        LSApplicationQueriesSchemes:
+          - youtube
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-        NSMicrophoneUsageDescription: NM7 IPTV dùng micro để tìm và mở kênh bằng giọng nói.
-        NSSpeechRecognitionUsageDescription: NM7 IPTV dùng nhận dạng giọng nói để tìm và mở kênh.
+        NSMicrophoneUsageDescription: NM7 TV dùng micro để tìm và mở kênh bằng giọng nói.
+        NSSpeechRecognitionUsageDescription: NM7 TV dùng nhận dạng giọng nói để tìm và mở kênh.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7tv
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
   NM7IPTVTests:
@@ -47,7 +51,7 @@ targets:
       - target: NM7IPTV
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv.tests
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7tv.tests
 schemes:
   NM7IPTV:
     build:
