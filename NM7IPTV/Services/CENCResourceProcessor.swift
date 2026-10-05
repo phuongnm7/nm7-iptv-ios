@@ -885,7 +885,14 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             lock.unlock()
             return cached
         }
+        // A single ClearKey is commonly shared by every encrypted audio/video
+        // track. The provider's KID may differ between tracks even though its
+        // one-key license is intended for the whole presentation.
+        let singleConfiguredKey = keys.count == 1 ? keys.values.first : nil
         lock.unlock()
+        if let singleConfiguredKey {
+            return singleConfiguredKey
+        }
 
         guard let licenseURL = drm.licenseURL else {
             throw error("ClearKey thiếu license URL.")
