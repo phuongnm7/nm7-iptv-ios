@@ -52,8 +52,6 @@ struct PlayerScreen: View {
                     topBar
                 }
             }
-            .contentShape(Rectangle())
-            .gesture(globalGesture)
         }
         .statusBarHidden(true)
         .onAppear { play(current) }
@@ -110,6 +108,7 @@ struct PlayerScreen: View {
         }
         .background(Color.black)
         .contentShape(Rectangle())
+        .gesture(globalGesture)
         .onTapGesture {
             withAnimation(.easeOut(duration: 0.18)) { showControls.toggle() }
         }
