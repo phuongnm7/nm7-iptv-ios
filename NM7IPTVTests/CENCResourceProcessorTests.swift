@@ -84,7 +84,7 @@ final class CENCResourceProcessorTests: XCTestCase {
         let secondMoof = makeFragment(
             iv: iv2,
             ciphertext: ct2,
-            dataOffset: Int32(secondPrefix + secondTemplate.count + 8)
+            dataOffset: Int32(secondTemplate.count + 8)
         )
         let secondMdat = makeBox("mdat", ct2)
 
