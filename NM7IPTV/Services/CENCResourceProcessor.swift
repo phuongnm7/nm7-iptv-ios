@@ -1,0 +1,510 @@
+import Foundation
+import CommonCrypto
+
+final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
+    private struct TrackInfo {
+        let kid: Data
+        let ivSize: Int
+        let constantIV: Data?
+    }
+
+    private struct Box {
+        let offset: Int
+        let size: Int
+        let header: Int
+        let type: String
+        var end: Int { offset + size }
+        var contentStart: Int { offset + header }
+    }
+
+    private struct SENCEntry {
+        let iv: Data
+        let subsamples: [(clear: Int, encrypted: Int)]?
+    }
+
+    private let drm: DRMInfo
+    private let headers: [String: String]
+    private let session: URLSession
+    private let lock = NSLock()
+    private var tracks: [UInt32: TrackInfo] = [:]
+    private var keys: [String: Data] = [:]
+
+    init(drm: DRMInfo, headers: [String: String]) {
+        self.drm = drm
+        self.headers = headers
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 25
+        configuration.waitsForConnectivity = false
+        self.session = URLSession(configuration: configuration)
+        super.init()
+
+        let pairs = ClearKeyContentKeySession.parsePairs(drm.licenseValue)
+        for (kid, key) in pairs {
+            keys[kid] = key
+        }
+    }
+
+    func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data {
+        if let moov = findTopLevelBox("moov", in: data) {
+            parseTrackEncryption(data, moov: moov)
+            return sanitizeInitialization(data)
+        }
+        if findTopLevelBox("moof", in: data) != nil {
+            return try await decryptFragment(data)
+        }
+        return data
+    }
+
+    private func parseTrackEncryption(_ data: Data, moov: Box) {
+        for trak in childBoxes(data, parent: moov).filter({ $0.type == "trak" }) {
+            guard let tkhd = childBoxes(data, parent: trak).first(where: { $0.type == "tkhd" }),
+                  let trackID = parseTrackID(data, tkhd: tkhd),
+                  let tenc = findRawBox(type: "tenc", in: data, range: trak.offset..<trak.end),
+                  tenc.end <= data.count,
+                  tenc.offset + 31 <= data.count else { continue }
+
+            let ivSize = Int(data[tenc.offset + 14])
+            let kid = data.subdata(in: (tenc.offset + 15)..<(tenc.offset + 31))
+            var constantIV: Data?
+            if ivSize == 0, tenc.offset + 32 <= tenc.end {
+                let size = Int(data[tenc.offset + 31])
+                if size > 0, tenc.offset + 32 + size <= tenc.end {
+                    constantIV = data.subdata(in: (tenc.offset + 32)..<(tenc.offset + 32 + size))
+                }
+            }
+            tracks[trackID] = TrackInfo(kid: kid, ivSize: ivSize, constantIV: constantIV)
+        }
+    }
+
+    private func decryptFragment(_ source: Data) async throws -> Data {
+        guard let moof = findTopLevelBox("moof", in: source) else { return source }
+        var output = source
+
+        for traf in childBoxes(source, parent: moof).filter({ $0.type == "traf" }) {
+            guard let tfhd = childBoxes(source, parent: traf).first(where: { $0.type == "tfhd" }),
+                  let trun = childBoxes(source, parent: traf).first(where: { $0.type == "trun" }),
+                  let senc = childBoxes(source, parent: traf).first(where: { $0.type == "senc" }) else {
+                continue
+            }
+
+            let trackID = readUInt32(source, tfhd.contentStart + 4)
+            let info = tracks[trackID]
+            guard let kid = info?.kid ?? singleKID() else {
+                throw error("CENC không tìm thấy KID cho track \(trackID).")
+            }
+            let key = try await key(for: kid)
+
+            let tfhdFlags = fullBoxFlags(source, tfhd)
+            var tfhdCursor = tfhd.contentStart + 4
+            _ = readUInt32(source, tfhd.contentStart + 4)
+            tfhdCursor += 4
+
+            var baseOffset = moof.offset
+            if (tfhdFlags & 0x000001) != 0 {
+                guard tfhdCursor + 8 <= tfhd.end else { throw error("tfhd thiếu base-data-offset.") }
+                baseOffset = Int(readUInt64(source, tfhdCursor))
+                tfhdCursor += 8
+            }
+            if (tfhdFlags & 0x000002) != 0 { tfhdCursor += 4 }
+            var defaultSampleSize = 0
+            if (tfhdFlags & 0x000008) != 0 { tfhdCursor += 4 }
+            if (tfhdFlags & 0x000010) != 0 {
+                guard tfhdCursor + 4 <= tfhd.end else { throw error("tfhd thiếu default sample size.") }
+                defaultSampleSize = Int(readUInt32(source, tfhdCursor))
+                tfhdCursor += 4
+            }
+
+            let (dataOffset, sampleSizes) = try parseTRUN(
+                source,
+                box: trun,
+                baseOffset: baseOffset,
+                fallback: moof.end,
+                defaultSampleSize: defaultSampleSize
+            )
+            let entries = try parseSENC(
+                source,
+                box: senc,
+                ivSize: info?.ivSize ?? 16,
+                constantIV: info?.constantIV
+            )
+            let count = min(entries.count, sampleSizes.count)
+            var sampleOffset = dataOffset
+
+            for index in 0..<count {
+                let size = sampleSizes[index]
+                guard size > 0, sampleOffset >= 0, sampleOffset + size <= output.count else {
+                    throw error("CENC sample range không hợp lệ.")
+                }
+
+                var sample = output.subdata(in: sampleOffset..<(sampleOffset + size))
+                try decryptSample(
+                    &sample,
+                    key: key,
+                    iv: entries[index].iv,
+                    subsamples: entries[index].subsamples
+                )
+                output.replaceSubrange(sampleOffset..<(sampleOffset + size), with: sample)
+                sampleOffset += size
+            }
+        }
+
+        return output
+    }
+
+    private func parseTRUN(
+        _ data: Data,
+        box: Box,
+        baseOffset: Int,
+        fallback: Int,
+        defaultSampleSize: Int
+    ) throws -> (Int, [Int]) {
+        let flags = fullBoxFlags(data, box)
+        var cursor = box.contentStart
+        guard cursor + 4 <= box.end else { throw error("trun thiếu sample count.") }
+        let count = Int(readUInt32(data, cursor))
+        cursor += 4
+
+        var dataOffset = fallback
+        if (flags & 0x000001) != 0 {
+            guard cursor + 4 <= box.end else { throw error("trun thiếu data offset.") }
+            dataOffset = baseOffset + readInt32(data, cursor)
+            cursor += 4
+        }
+        if (flags & 0x000004) != 0 { cursor += 4 }
+
+        var sizes: [Int] = []
+        sizes.reserveCapacity(count)
+        for _ in 0..<count {
+            if (flags & 0x000100) != 0 { cursor += 4 }
+            var size = defaultSampleSize
+            if (flags & 0x000200) != 0 {
+                guard cursor + 4 <= box.end else { throw error("trun thiếu sample size.") }
+                size = Int(readUInt32(data, cursor))
+                cursor += 4
+            }
+            if (flags & 0x000400) != 0 { cursor += 4 }
+            if (flags & 0x000800) != 0 { cursor += 4 }
+            guard cursor <= box.end else { throw error("trun vượt kích thước box.") }
+            sizes.append(size)
+        }
+
+        guard sizes.allSatisfy({ $0 > 0 }) else {
+            throw error("CENC cần sample-size trong trun hoặc tfhd.")
+        }
+        return (dataOffset, sizes)
+    }
+
+    private func parseSENC(_ data: Data, box: Box, ivSize: Int, constantIV: Data?) throws -> [SENCEntry] {
+        let flags = fullBoxFlags(data, box)
+        var cursor = box.contentStart
+        guard cursor + 4 <= box.end else { throw error("senc thiếu sample count.") }
+        let count = Int(readUInt32(data, cursor))
+        cursor += 4
+
+        var result: [SENCEntry] = []
+        result.reserveCapacity(count)
+
+        for _ in 0..<count {
+            let iv: Data
+            if ivSize > 0 {
+                guard cursor + ivSize <= box.end else { throw error("senc thiếu IV.") }
+                iv = data.subdata(in: cursor..<(cursor + ivSize))
+                cursor += ivSize
+            } else {
+                guard let constantIV else { throw error("CENC thiếu constant IV.") }
+                iv = constantIV
+            }
+
+            var subs: [(clear: Int, encrypted: Int)]?
+            if (flags & 0x000002) != 0 {
+                guard cursor + 2 <= box.end else { throw error("senc thiếu subsample count.") }
+                let n = Int(readUInt16(data, cursor))
+                cursor += 2
+                var items: [(clear: Int, encrypted: Int)] = []
+                items.reserveCapacity(n)
+                for _ in 0..<n {
+                    guard cursor + 6 <= box.end else { throw error("senc subsample thiếu dữ liệu.") }
+                    items.append((
+                        clear: Int(readUInt16(data, cursor)),
+                        encrypted: Int(readUInt32(data, cursor + 2))
+                    ))
+                    cursor += 6
+                }
+                subs = items
+            }
+            result.append(SENCEntry(iv: iv, subsamples: subs))
+        }
+        return result
+    }
+
+    private func decryptSample(
+        _ sample: inout Data,
+        key: Data,
+        iv: Data,
+        subsamples: [(clear: Int, encrypted: Int)]?
+    ) throws {
+        var counter = iv
+        if counter.count == 8 {
+            counter.append(contentsOf: Array(repeating: 0, count: 8))
+        }
+        guard counter.count == 16, key.count == kCCKeySizeAES128 else {
+            throw error("CENC AES-128 key/IV không hợp lệ.")
+        }
+
+        var cryptor: CCCryptorRef?
+        let status = key.withUnsafeBytes { keyBytes in
+            counter.withUnsafeBytes { ivBytes in
+                CCCryptorCreateWithMode(
+                    CCOperation(kCCDecrypt),
+                    CCMode(kCCModeCTR),
+                    CCAlgorithm(kCCAlgorithmAES128),
+                    CCPadding(ccNoPadding),
+                    ivBytes.baseAddress,
+                    keyBytes.baseAddress,
+                    key.count,
+                    nil,
+                    0,
+                    0,
+                    CCModeOptions(kCCModeOptionCTR_BE),
+                    &cryptor
+                )
+            }
+        }
+        guard status == kCCSuccess, let cryptor else {
+            throw error("Không khởi tạo được AES-CTR.")
+        }
+        defer { CCCryptorRelease(cryptor) }
+
+        if let subsamples {
+            var offset = 0
+            for part in subsamples {
+                guard offset + part.clear + part.encrypted <= sample.count else {
+                    throw error("CENC subsample vượt sample.")
+                }
+                offset += part.clear
+                if part.encrypted > 0 {
+                    try cryptRange(&sample, offset: offset, length: part.encrypted, cryptor: cryptor)
+                    offset += part.encrypted
+                }
+            }
+        } else {
+            try cryptRange(&sample, offset: 0, length: sample.count, cryptor: cryptor)
+        }
+    }
+
+    private func cryptRange(_ data: inout Data, offset: Int, length: Int, cryptor: CCCryptorRef) throws {
+        guard length > 0 else { return }
+        var output = [UInt8](repeating: 0, count: length)
+        var moved = 0
+        let status = data.withUnsafeBytes { input in
+            output.withUnsafeMutableBytes { out in
+                CCCryptorUpdate(
+                    cryptor,
+                    input.baseAddress!.advanced(by: offset),
+                    length,
+                    out.baseAddress,
+                    length,
+                    &moved
+                )
+            }
+        }
+        guard status == kCCSuccess, moved == length else {
+            throw error("AES-CTR giải mã sample thất bại.")
+        }
+        data.replaceSubrange(offset..<(offset + length), with: output)
+    }
+
+    private func key(for kid: Data) async throws -> Data {
+        let id = kid.base64EncodedString()
+        lock.lock()
+        if let cached = keys[id] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        guard let licenseURL = drm.licenseURL else {
+            throw error("ClearKey thiếu license URL.")
+        }
+
+        func store(_ candidates: [String: Data]) -> Data? {
+            let value = candidates[id] ?? candidates.values.first
+            if let value {
+                lock.lock()
+                keys[id] = value
+                lock.unlock()
+            }
+            return value
+        }
+
+        var get = URLRequest(url: licenseURL)
+        get.httpMethod = "GET"
+        get.timeoutInterval = 15
+        headers.forEach { get.setValue($0.value, forHTTPHeaderField: $0.key) }
+        if let (data, response) = try? await session.data(for: get),
+           let http = response as? HTTPURLResponse,
+           200..<300 ~= http.statusCode,
+           let candidates = try? ClearKeyContentKeySession.parseJWK(data),
+           let value = store(candidates) {
+            return value
+        }
+
+        var post = URLRequest(url: licenseURL)
+        post.httpMethod = "POST"
+        post.timeoutInterval = 15
+        headers.forEach { post.setValue($0.value, forHTTPHeaderField: $0.key) }
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("application/json", forHTTPHeaderField: "Accept")
+        post.httpBody = try JSONSerialization.data(withJSONObject: [
+            "kids": [base64URL(kid)],
+            "type": "temporary"
+        ])
+
+        let (data, response) = try await session.data(for: post)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
+              let candidates = try? ClearKeyContentKeySession.parseJWK(data),
+              let value = store(candidates) else {
+            throw error("ClearKey license không trả về KID/KEY hợp lệ.")
+        }
+        return value
+    }
+
+    private func singleKID() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard keys.count == 1 else { return nil }
+        return keys.keys.first.flatMap(ClearKeyContentKeySession.decodeKeyID)
+    }
+
+    private func sanitizeInitialization(_ data: Data) -> Data {
+        var result = data
+        rewriteAllBoxTypes(&result, from: "encv", to: "avc1")
+        rewriteAllBoxTypes(&result, from: "enca", to: "mp4a")
+        // Mark track encryption as unprotected after the sample bytes are handled by this processor.
+        rewriteProtectedFlags(&result)
+        return result
+    }
+
+    private func rewriteAllBoxTypes(_ data: inout Data, from: String, to: String) {
+        let source = Array(from.utf8)
+        let target = Array(to.utf8)
+        guard source.count == 4 else { return }
+        if data.count < 8 { return }
+        for i in 4..<(data.count - 3) where data[i] == source[0] &&
+            data[i + 1] == source[1] && data[i + 2] == source[2] && data[i + 3] == source[3] {
+            data.replaceSubrange(i..<(i + 4), with: target)
+        }
+    }
+
+    private func rewriteProtectedFlags(_ data: inout Data) {
+        let type = Array("tenc".utf8)
+        guard data.count >= 16 else { return }
+        for i in 4..<(data.count - 3) where data[i] == type[0] &&
+            data[i + 1] == type[1] && data[i + 2] == type[2] && data[i + 3] == type[3] {
+            let start = i - 4
+            guard start >= 0, start + 31 < data.count else { continue }
+            data[start + 13] = 0
+            data[start + 14] = 0
+        }
+    }
+
+    private func findTopLevelBox(_ type: String, in data: Data) -> Box? {
+        var cursor = 0
+        while let box = boxAt(data, cursor: cursor, limit: data.count) {
+            if box.type == type { return box }
+            cursor = box.end
+            if cursor >= data.count { break }
+        }
+        return nil
+    }
+
+    private func childBoxes(_ data: Data, parent: Box) -> [Box] {
+        var result: [Box] = []
+        var cursor = parent.contentStart
+        while let box = boxAt(data, cursor: cursor, limit: parent.end) {
+            result.append(box)
+            cursor = box.end
+            if cursor >= parent.end { break }
+        }
+        return result
+    }
+
+    private func findRawBox(type: String, in data: Data, range: Range<Int>) -> Box? {
+        guard range.lowerBound >= 0, range.upperBound <= data.count else { return nil }
+        let bytes = Array(type.utf8)
+        guard bytes.count == 4 else { return nil }
+        var index = range.lowerBound + 4
+        while index + 4 <= range.upperBound {
+            if data[index] == bytes[0] && data[index + 1] == bytes[1] &&
+                data[index + 2] == bytes[2] && data[index + 3] == bytes[3] {
+                let start = index - 4
+                if let box = boxAt(data, cursor: start, limit: range.upperBound), box.type == type {
+                    return box
+                }
+            }
+            index += 1
+        }
+        return nil
+    }
+
+    private func parseTrackID(_ data: Data, tkhd: Box) -> UInt32? {
+        let version = data[tkhd.offset + 8]
+        let offset = version == 1 ? tkhd.offset + 28 : tkhd.offset + 20
+        guard offset + 4 <= tkhd.end else { return nil }
+        return readUInt32(data, offset)
+    }
+
+    private func boxAt(_ data: Data, cursor: Int, limit: Int) -> Box? {
+        guard cursor >= 0, cursor + 8 <= limit else { return nil }
+        let size32 = Int(readUInt32(data, cursor))
+        let type = String(data: data.subdata(in: (cursor + 4)..<(cursor + 8)), encoding: .ascii) ?? ""
+        if size32 == 0 {
+            return Box(offset: cursor, size: limit - cursor, header: 8, type: type)
+        }
+        if size32 == 1 {
+            guard cursor + 16 <= limit else { return nil }
+            let size = Int(readUInt64(data, cursor + 8))
+            guard size >= 16, cursor + size <= limit else { return nil }
+            return Box(offset: cursor, size: size, header: 16, type: type)
+        }
+        guard size32 >= 8, cursor + size32 <= limit else { return nil }
+        return Box(offset: cursor, size: size32, header: 8, type: type)
+    }
+
+    private func fullBoxFlags(_ data: Data, _ box: Box) -> UInt32 {
+        (UInt32(data[box.offset + 9]) << 16) |
+        (UInt32(data[box.offset + 10]) << 8) |
+        UInt32(data[box.offset + 11])
+    }
+
+    private func readUInt16(_ data: Data, _ offset: Int) -> UInt16 {
+        (UInt16(data[offset]) << 8) | UInt16(data[offset + 1])
+    }
+
+    private func readUInt32(_ data: Data, _ offset: Int) -> UInt32 {
+        (UInt32(data[offset]) << 24) |
+        (UInt32(data[offset + 1]) << 16) |
+        (UInt32(data[offset + 2]) << 8) |
+        UInt32(data[offset + 3])
+    }
+
+    private func readUInt64(_ data: Data, _ offset: Int) -> UInt64 {
+        (UInt64(readUInt32(data, offset)) << 32) | UInt64(readUInt32(data, offset + 4))
+    }
+
+    private func readInt32(_ data: Data, _ offset: Int) -> Int32 {
+        Int32(bitPattern: readUInt32(data, offset))
+    }
+
+    private func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func error(_ description: String) -> NSError {
+        NSError(domain: "NM7CENC", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
+    }
+}
