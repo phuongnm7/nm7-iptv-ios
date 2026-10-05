@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import UniformTypeIdentifiers
+import Network
 
 private let logScope = "[avassetresourceloader]"
 
@@ -44,6 +45,7 @@ internal final class UPlayerAVAssetResourceLoader: NSObject, UPlayerAVAssetResou
     public var mediaRequestHeader: [String: Any]?
     public weak var mediaResourceProcessor: UPlayerMediaResourceProcessor?
     private let transcodedCache = NSCache<NSString, NSData>()
+    private let cencProxy = LocalCENCProxy()
     private lazy var persistentMediaCacheManager: UPlayerMediaCacheManager? = {
         return UPlayerMediaCacheManager(rootDirectory: commonCacheDirectory)
     }()
@@ -53,6 +55,8 @@ internal final class UPlayerAVAssetResourceLoader: NSObject, UPlayerAVAssetResou
         transcodedCache.countLimit = 64
         transcodedCache.totalCostLimit = 32 * 1024 * 1024
     }
+
+    deinit { cencProxy.stop() }
     
     public func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
 
@@ -550,16 +554,37 @@ extension UPlayerAVAssetResourceLoader {
 
 extension UPlayerAVAssetResourceLoader {
     fileprivate func handlePlaylist(url: URL, loadingRequest: AVAssetResourceLoadingRequest) {
-        guard let playlist = dataDelegate?.getPlaylist(source: self, url: url),
-            let data = playlist.data(using: .utf8) else {
-            loadingRequest.finishLoading(with: UPlayerError.assetLoadingFailed)
-            return
+        Task { [weak self] in
+            guard let self,
+                  let playlist = self.dataDelegate?.getPlaylist(source: self, url: url) else {
+                loadingRequest.finishLoading(with: UPlayerError.assetLoadingFailed)
+                return
+            }
+
+            let output: String
+            if playlist.contains("mode=cenc-init") || playlist.contains("mode=cenc-segment") {
+                guard let baseURL = self.cencProxy.start(
+                    processor: self.mediaResourceProcessor,
+                    headers: self.mediaRequestHeader
+                ) else {
+                    loadingRequest.finishLoading(with: UPlayerError.assetLoadingFailed)
+                    return
+                }
+                output = self.cencProxy.rewriteCENCReferences(in: playlist, baseURL: baseURL)
+            } else {
+                output = playlist
+            }
+
+            guard let data = output.data(using: .utf8) else {
+                loadingRequest.finishLoading(with: UPlayerError.assetLoadingFailed)
+                return
+            }
+            self.respond(data: data,
+                         uti: UTType(filenameExtension: "m3u8")?.identifier ?? "public.m3u-playlist",
+                         mimeType: "application/vnd.apple.mpegurl",
+                         byteRangeSupported: false,
+                         loadingRequest: loadingRequest)
         }
-        
-        respond(data: data, uti: UTType(filenameExtension: "m3u8")?.identifier ?? "public.m3u-playlist",
-                mimeType: "application/vnd.apple.mpegurl",
-                byteRangeSupported: false,
-                loadingRequest: loadingRequest)
     }
 }
 
@@ -685,5 +710,190 @@ extension UPlayerAVAssetResourceLoader {
         
         loadingRequest.dataRequest?.respond(with: data)
         loadingRequest.finishLoading()
+    }
+}
+
+
+/// AVFoundation requires HTTP(S) delivery for HLS media segments. It rejects
+/// segment bytes supplied directly to AVAssetResourceLoader with
+/// "custom url not redirect", so ClearKey segments are served by this loopback
+/// HTTP endpoint after the CENC processor decrypts them.
+private final class LocalCENCProxy {
+    private let lock = NSLock()
+    private let queue = DispatchQueue(label: "nm7.cenc.loopback", qos: .userInitiated)
+    private var listener: NWListener?
+    private var port: UInt16?
+    private weak var processor: UPlayerMediaResourceProcessor?
+    private var headers: [String: Any] = [:]
+
+    func start(processor: UPlayerMediaResourceProcessor?,
+               headers: [String: Any]?) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let processor else { return nil }
+        self.processor = processor
+        self.headers = headers ?? [:]
+        if let port {
+            return URL(string: "http://127.0.0.1:\(port)")
+        }
+
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        guard let listener = try? NWListener(using: parameters) else { return nil }
+        self.listener = listener
+
+        let ready = DispatchSemaphore(value: 0)
+        var readyPort: UInt16?
+        var failed = false
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                readyPort = listener.port?.rawValue
+                ready.signal()
+            case .failed:
+                failed = true
+                ready.signal()
+            default:
+                break
+            }
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            self?.serve(connection)
+        }
+        listener.start(queue: queue)
+        guard ready.wait(timeout: .now() + 5) == .success,
+              !failed, let readyPort else {
+            listener.cancel()
+            self.listener = nil
+            return nil
+        }
+        self.port = readyPort
+        return URL(string: "http://127.0.0.1:\(readyPort)")
+    }
+
+    func stop() {
+        lock.lock()
+        defer { lock.unlock() }
+        listener?.cancel()
+        listener = nil
+        port = nil
+        processor = nil
+        headers = [:]
+    }
+
+    func rewriteCENCReferences(in playlist: String, baseURL: URL) -> String {
+        var lines = playlist.components(separatedBy: .newlines)
+        for index in lines.indices {
+            let line = lines[index]
+            if line.hasPrefix("#EXT-X-MAP:"),
+               let uriRange = line.range(of: #"URI="[^"]+""#) {
+                let quoted = String(line[uriRange])
+                let value = String(quoted.dropFirst(5).dropLast())
+                if let replacement = proxyURL(for: value, baseURL: baseURL) {
+                    lines[index].replaceSubrange(uriRange, with: #"URI="\#(replacement)""#)
+                }
+            } else if !line.isEmpty, !line.hasPrefix("#"),
+                      let replacement = proxyURL(for: line, baseURL: baseURL) {
+                lines[index] = replacement
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func proxyURL(for value: String, baseURL: URL) -> String? {
+        guard let url = URL(string: value),
+              let mode = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "mode" })?.value,
+              mode == "cenc-init" || mode == "cenc-segment" else {
+            return nil
+        }
+        let token = Data(url.absoluteString.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return baseURL.appendingPathComponent("cenc").appendingPathComponent(token).absoluteString
+    }
+
+    private func serve(_ connection: NWConnection) {
+        connection.start(queue: queue)
+        receiveHeader(connection, accumulated: Data())
+    }
+
+    private func receiveHeader(_ connection: NWConnection, accumulated: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) {
+            [weak self] data, _, isComplete, error in
+            guard let self, error == nil, let data else {
+                connection.cancel()
+                return
+            }
+            var bytes = accumulated
+            bytes.append(data)
+            let delimiter = Data([13, 10, 13, 10])
+            guard let end = bytes.range(of: delimiter) else {
+                if isComplete || bytes.count > 64 * 1024 {
+                    connection.cancel()
+                } else {
+                    self.receiveHeader(connection, accumulated: bytes)
+                }
+                return
+            }
+            let head = String(decoding: bytes[..<end.lowerBound], as: UTF8.self)
+            let firstLine = head.components(separatedBy: "\r\n").first ?? ""
+            let fields = firstLine.split(separator: " ")
+            guard fields.count >= 2,
+                  let requestURL = URL(string: "http://127.0.0.1\(fields[1])"),
+                  let token = requestURL.pathComponents.last,
+                  token != "cenc",
+                  let sourceURL = Self.decodeURL(token) else {
+                self.send(Data("bad request".utf8), status: 400, on: connection)
+                return
+            }
+
+            var request = URLRequest(url: sourceURL,
+                                     cachePolicy: .reloadIgnoringLocalCacheData,
+                                     timeoutInterval: 30)
+            self.lock.lock()
+            let processor = self.processor
+            let requestHeaders = self.headers
+            self.lock.unlock()
+            requestHeaders.forEach {
+                request.setValue(String(describing: $0.value), forHTTPHeaderField: $0.key)
+            }
+            Task {
+                do {
+                    let (raw, response) = try await URLSession.shared.data(for: request)
+                    if let http = response as? HTTPURLResponse,
+                       !(200..<300).contains(http.statusCode) {
+                        self.send(Data("upstream HTTP \(http.statusCode)".utf8),
+                                  status: 502, on: connection)
+                        return
+                    }
+                    let output = try await processor?.processMediaData(raw,
+                                                                       sourceURL: sourceURL,
+                                                                       sourceOffset: 0) ?? raw
+                    self.send(output, status: 200, on: connection)
+                } catch {
+                    self.send(Data("CENC proxy failed".utf8), status: 502, on: connection)
+                }
+            }
+        }
+    }
+
+    private func send(_ body: Data, status: Int, on connection: NWConnection) {
+        let reason = status == 200 ? "OK" : (status == 400 ? "Bad Request" : "Bad Gateway")
+        var response = Data("HTTP/1.1 \(status) \(reason)\r\nContent-Type: video/mp4\r\nContent-Length: \(body.count)\r\nAccept-Ranges: none\r\nConnection: close\r\n\r\n".utf8)
+        response.append(body)
+        connection.send(content: response, completion: .contentProcessed { _ in
+            connection.cancel()
+        })
+    }
+
+    private static func decodeURL(_ token: String) -> URL? {
+        var base64 = token.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64.append("=") }
+        guard let data = Data(base64Encoded: base64),
+              let string = String(data: data, encoding: .utf8) else { return nil }
+        return URL(string: string)
     }
 }
