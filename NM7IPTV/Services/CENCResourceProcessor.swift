@@ -174,7 +174,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         var dataOffset = fallback
         if (flags & 0x000001) != 0 {
             guard cursor + 4 <= box.end else { throw error("trun thiếu data offset.") }
-            dataOffset = baseOffset + readInt32(data, cursor)
+            dataOffset = baseOffset + Int(readInt32(data, cursor))
             cursor += 4
         }
         if (flags & 0x000004) != 0 { cursor += 4 }
@@ -385,11 +385,27 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
     private func sanitizeInitialization(_ data: Data) -> Data {
         var result = data
-        rewriteAllBoxTypes(&result, from: "encv", to: "avc1")
-        rewriteAllBoxTypes(&result, from: "enca", to: "mp4a")
+        rewriteProtectedSampleEntries(&result)
+
         // Mark track encryption as unprotected after the sample bytes are handled by this processor.
         rewriteProtectedFlags(&result)
         return result
+    }
+
+    private func rewriteProtectedSampleEntries(_ data: inout Data) {
+        let protectedTypes = ["encv", "enca"]
+        var cursor = 0
+        while let box = boxAt(data, cursor: cursor, limit: data.count) {
+            if protectedTypes.contains(box.type) {
+                let newType = clearSampleEntryType(data, box)
+                let bytes = Array(newType.utf8)
+                if bytes.count == 4 {
+                    data.replaceSubrange((box.offset + 4)..<(box.offset + 8), with: bytes)
+                }
+            }
+            cursor = box.end
+            if cursor >= data.count { break }
+        }
     }
 
     private func rewriteAllBoxTypes(_ data: inout Data, from: String, to: String) {
