@@ -98,8 +98,6 @@ final class M3UParserTests: XCTestCase {
         XCTAssertFalse(backup.isLikelyDRM)
         XCTAssertTrue(backup.options.contains("#NM7-IOS-VTV-BACKUP-HLS"))
     }
-}
-
 
     func testDirectSportsHTTPStreamsPreferVLC() {
         let text = """
@@ -118,3 +116,5 @@ final class M3UParserTests: XCTestCase {
         XCTAssertFalse(parsed.channels[2].prefersVLC)
         XCTAssertTrue(parsed.channels[2].isHLS)
     }
+
+}
