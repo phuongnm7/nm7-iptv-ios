@@ -98,6 +98,16 @@ final class ChannelPlayer: NSObject, ObservableObject {
             return
         }
 
+        // Sports playlist entries are predominantly raw MPEG-TS / IPTV HTTP
+        // feeds (often /play/live.php?extension=ts or extensionless portal URLs).
+        // AVPlayer is not a reliable first engine for those resources on iOS.
+        // Route them straight to LibVLC instead of waiting 8 seconds for a
+        // fallback, which also avoids presenting a blank AVPlayer surface.
+        if shouldPreferVLC(for: channel) {
+            startVLC(for: channel)
+            return
+        }
+
         if drm.isNativeFairPlay {
             startFairPlay(channel: channel, drm: drm, headers: headers)
             return
