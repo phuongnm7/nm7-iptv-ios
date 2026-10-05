@@ -39,14 +39,17 @@ jobs:
           build
 
       - name: Run unit tests
-        run: >
-          xcodebuild
-          -workspace NM7IPTV.xcworkspace
-          -scheme NM7IPTV
-          -sdk iphonesimulator
-          -configuration Debug
-          CODE_SIGNING_ALLOWED=NO
-          test
+        shell: bash
+        run: |
+          set -euo pipefail
+          DESTINATION_ID="$(xcrun simctl list devices available | sed -nE 's/.*(iPhone[^()]*) \(([0-9A-F-]{36})\) \(Booted\).*/\2/p; t; s/.*(iPhone[^()]*) \(([0-9A-F-]{36})\).*/\2/p' | head -n 1)"
+          if [ -z "$DESTINATION_ID" ]; then
+            echo "No available iPhone Simulator found."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using Simulator: $DESTINATION_ID"
+          xcodebuild             -workspace NM7IPTV.xcworkspace             -scheme NM7IPTV             -destination "id=$DESTINATION_ID"             -configuration Debug             CODE_SIGNING_ALLOWED=NO             test
 
       - name: Build unsigned iPhone and iPad device app
         run: >
