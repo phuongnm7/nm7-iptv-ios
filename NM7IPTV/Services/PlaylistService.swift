@@ -47,8 +47,39 @@ actor PlaylistService {
             ?? String(data: data, encoding: .isoLatin1)
             ?? ""
 
-        let result = M3UParser.parse(text, baseURL: source.url)
-        guard !result.channels.isEmpty else { throw PlaylistError.empty }
+        let parsed = M3UParser.parse(text, baseURL: source.url)
+        guard !parsed.channels.isEmpty else { throw PlaylistError.empty }
+
+        var channels = parsed.channels
+
+        // The public web playlist and the current merge worker do not always
+        // expose the VTV "Dự phòng" entries. Pull the repository's vmttv source
+        // as a secondary source so the iOS app does not lose this group.
+        if source.id == SourceStore.defaultID,
+           let backupURL = URL(string: "https://raw.githubusercontent.com/phuongnm7/Iptv-phuongnm7/main/vmttv"),
+           let backupText = try? await fetchText(url: backupURL) {
+            let backup = M3UParser.parse(backupText, baseURL: backupURL)
+            let vtvBackup = backup.channels.filter {
+                let group = $0.group
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                let name = $0.name
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                return (group.contains("dự phòng") || group.contains("du phong")) &&
+                    name.hasPrefix("vtv")
+            }
+            channels.append(contentsOf: vtvBackup)
+            channels = M3UParser.normalizeForIOS(channels)
+
+            var seen = Set<String>()
+            channels = channels.filter { seen.insert($0.id).inserted }
+        }
+
+        let result = LoadedPlaylist(
+            channels: channels,
+            epgURL: parsed.epgURL
+        )
 
         let payload = CachePayload(
             channels: result.channels,
