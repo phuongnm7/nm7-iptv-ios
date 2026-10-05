@@ -16,7 +16,7 @@ public protocol UPlayerAVAssetResourceLoaderDelegate: AnyObject {
 }
 
 public protocol UPlayerMediaResourceProcessor: AnyObject {
-    func processMediaData(_ data: Data, sourceURL: URL) throws -> Data
+    func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data
 }
 
 public protocol UPlayerAVAssetResourceLoaderTranscodingDelegate: AnyObject {
@@ -133,7 +133,7 @@ extension UPlayerAVAssetResourceLoader {
                     throw UPlayerError.assetLoadingFailed
                 }
                 let data = try await download(url: realURL)
-                let processed = try mediaResourceProcessor?.processMediaData(data, sourceURL: realURL) ?? data
+                let processed = try await mediaResourceProcessor?.processMediaData(data, sourceURL: realURL) ?? data
                 guard !processed.isEmpty else { throw UPlayerError.emptyDownload }
                 respond(data: processed,
                         uti: UTType(filenameExtension: "mp4")?.identifier ?? "public.mpeg-4",
