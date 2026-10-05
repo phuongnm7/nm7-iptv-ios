@@ -43,6 +43,12 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         for (kid, key) in pairs {
             keys[kid] = key
         }
+        if pairs.isEmpty, let data = drm.licenseValue.data(using: .utf8),
+           let jwk = try? ClearKeyContentKeySession.parseJWK(data) {
+            for (kid, key) in jwk {
+                keys[kid] = key
+            }
+        }
     }
 
     func processMediaData(_ data: Data, sourceURL: URL) async throws -> Data {
