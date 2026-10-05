@@ -78,11 +78,18 @@ private struct ChannelLogoView: View {
                 .overlay(Circle().stroke(NM7Theme.textSecondary.opacity(0.16), lineWidth: 1))
 
             if let data, let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: max(10, diameter - 4), height: max(10, diameter - 4))
-                    .clipShape(Circle())
+                if ChannelLogoResolver.isAffected(channel) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: max(10, diameter - 4), height: max(10, diameter - 4))
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: max(10, diameter - 4), height: max(10, diameter - 4))
+                        .clipShape(Circle())
+                }
             } else {
                 Image(systemName: failed ? "tv.fill" : "dot.radiowaves.left.and.right")
                     .font(.system(size: diameter * 0.42, weight: .bold))
