@@ -1,15 +1,62 @@
-# NM7 IPTV for iPhone & iPad
+# NM7 IPTV cho iPhone & iPad
 
-Ứng dụng IPTV cá nhân dành cho iPhone và iPad, được xây dựng lại bằng SwiftUI dựa trên đặc tả chức năng của NM7 IPTV Mobile 1.10.19.
+Ứng dụng IPTV native dành cho **iPhone và iPad**, được xây dựng trên nền chuẩn **NM7 TV Android 1.0.69** để giữ cùng hệ thống chức năng và trải nghiệm, nhưng dùng API native phù hợp với iOS/iPadOS.
 
-## Trạng thái
+## Trạng thái hiện tại
 
-- Phiên bản khởi tạo: 0.1.0
-- Nền tảng: iOS/iPadOS 16+
-- Giao diện: SwiftUI
-- Trình phát: AVPlayer
-- Kho này độc lập với Android Mobile và Android TV.
+- **Phiên bản:** 1.0.69
+- **Bundle version:** 69
+- **Nền tham chiếu:** NM7 TV Android 1.0.69
+- **Android reference commit:** `f79fc06009f20e0ac3a5859c0abcfd6ce70a6763`
+- **iOS branch:** `feat/ios-1.0.69-android-baseline`
+- **Nền tảng:** iOS/iPadOS 16+
+- **Thiết bị:** iPhone + iPad
+- **UI:** SwiftUI
+- **Player chính:** AVPlayer
+- **Player dự phòng:** MobileVLCKit / VLC
+- **CI:** GitHub Actions — run #26 đã build, unit test và validate unsigned IPA thành công.
 
-## Nguyên tắc
+## Mục tiêu của bản iOS 1.0.69
 
-Ứng dụng không cung cấp nội dung truyền hình. Người dùng chỉ sử dụng playlist và nội dung mà mình có quyền truy cập. URL nguồn mặc định tích hợp không hiển thị trong giao diện quản lý nguồn.
+Bản này lấy **Android TV 1.0.69 làm source of truth về chức năng và hành vi**, sau đó chuyển từng phần sang iOS native:
+
+- Màn hình chính và hệ thống nhóm kênh.
+- Truyền hình, Thể thao, Tất cả kênh.
+- Yêu thích và Gần đây.
+- Tìm kiếm và tìm bằng giọng nói.
+- Quản lý nhiều nguồn IPTV và tải lại playlist.
+- Logo và card kênh.
+- Player/fullscreen và chuyển kênh.
+- Cache và khôi phục playlist.
+
+## Player iOS
+
+**AVPlayer → player native chính** cho HLS/MP4 tương thích iOS.
+
+**MobileVLCKit/VLC → fallback** khi AVPlayer không mở được hoặc bị stall kéo dài.
+
+App truyền các header hợp lệ của playlist như User-Agent, Referer và Cookie khi cần.
+
+Đối với nguồn DASH/DRM chưa có đường phát native iOS tương thích, app không cố phá hoặc loại bỏ DRM; trạng thái được báo rõ ràng.
+
+## Build & cài đặt
+
+GitHub Actions hiện đã tạo artifact:
+
+`NM7-IPTV-iOS-1.0.69-unsigned-IPA`
+
+Artifact này là IPA **chưa ký**. Để cài trên iPhone/iPad thực tế cần ký bằng tài khoản/phương thức Apple phù hợp, ví dụ Apple Development/Ad Hoc hoặc Sideloadly.
+
+## Nguyên tắc phát triển
+
+- Android TV 1.0.69 là **source of truth về chức năng và hành vi**.
+- iOS/iPadOS dùng API native phù hợp với Apple.
+- Không làm thay đổi dự án Android.
+- Không tiếp tục vòng lặp sửa DRM Safari của bản web trong nhánh iOS này.
+- Mọi thay đổi lớn phải được build và kiểm tra bằng GitHub Actions trước khi coi là hoàn thành.
+
+## Tiến độ
+
+Đã hoàn thành nền tảng 1.0.69, metadata version và pipeline build IPA. Công việc tiếp theo là hoàn thiện độ tương đồng giao diện/hành vi với Android TV 1.0.69 và kiểm thử playback thực tế trên iPhone/iPad.
+
+Xem chi tiết tại [`PROGRESS.md`](./PROGRESS.md).
