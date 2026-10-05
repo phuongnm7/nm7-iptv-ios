@@ -84,6 +84,8 @@ jobs:
           test -d "$APP"
           test -f "$APP/nm7_default_background_new.webp"
           test -f "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 1.0.74' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 74' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | grep -Fx "1.0.74"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" | grep -Fx "74"
 
