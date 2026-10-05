@@ -86,6 +86,7 @@ enum M3UParser {
             }
 
             headers.merge(split.headers) { _, incoming in incoming }
+            options.append(contentsOf: split.options)
 
             let name = info.split(separator: ",", maxSplits: 1).last.map(String.init)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Kênh"
@@ -140,11 +141,12 @@ enum M3UParser {
         }
     }
 
-    private static func splitURLAndHeaders(_ line: String) -> (url: String, headers: [String: String]) {
-        guard let pipe = line.firstIndex(of: "|") else { return (line, [:]) }
+    private static func splitURLAndHeaders(_ line: String) -> (url: String, headers: [String: String], options: [String]) {
+        guard let pipe = line.firstIndex(of: "|") else { return (line, [:], []) }
         let url = String(line[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
         let query = String(line[line.index(after: pipe)...])
         var result: [String: String] = [:]
+        var drmOptions: [String] = []
 
         for pair in query.split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
@@ -159,10 +161,12 @@ enum M3UParser {
             case "user-agent", "useragent": result["User-Agent"] = value
             case "origin": result["Origin"] = value
             case "cookie": result["Cookie"] = value
+            case "drmscheme", "drm_scheme": drmOptions.append("#KODIPROP:inputstream.adaptive.license_type=\(value)")
+            case "drmlicense", "drm_license": drmOptions.append("#KODIPROP:inputstream.adaptive.license_key=\(value)")
             default: result[key] = value
             }
         }
-        return (url, result)
+        return (url, result, drmOptions)
     }
 
     private static func resolveURL(_ value: String, baseURL: URL?) -> URL? {
