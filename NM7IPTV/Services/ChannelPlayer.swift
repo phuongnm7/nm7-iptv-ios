@@ -2,7 +2,6 @@ import AVFoundation
 import Foundation
 import MobileVLCKit
 import UIKit
-import UPlayer
 
 @MainActor
 final class ChannelPlayer: NSObject, ObservableObject {
