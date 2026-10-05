@@ -11,6 +11,21 @@ struct Channel: Identifiable, Codable, Hashable {
     let options: [String]
 
     var userAgent: String? { header(named: "User-Agent") }
+    var signedURLExpirationDate: Date? {
+        guard let components = URLComponents(url: streamURL, resolvingAgainstBaseURL: false),
+              let raw = components.queryItems?.first(where: {
+                  ["expires", "expiry", "exp"].contains($0.name.lowercased())
+              })?.value,
+              let value = Double(raw),
+              value >= 1_000_000_000 else { return nil }
+
+        let seconds = value >= 100_000_000_000 ? value / 1_000 : value
+        return Date(timeIntervalSince1970: seconds)
+    }
+    func hasExpiredSignedURL(now: Date = Date()) -> Bool {
+        guard let expiration = signedURLExpirationDate else { return false }
+        return expiration <= now
+    }
     var referrer: String? { header(named: "Referer") }
     var isHLS: Bool {
         let url = streamURL.absoluteString.lowercased()
