@@ -807,7 +807,17 @@ private final class LocalCENCProxy {
               mode == "cenc-init" || mode == "cenc-segment" else {
             return nil
         }
-        let token = Data(url.absoluteString.utf8).base64EncodedString()
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        if components.scheme?.lowercased() == "uplayer" {
+            components.scheme = "https"
+        }
+        components.queryItems = components.queryItems?.filter {
+            $0.name != "mode" && $0.name != "codec" && $0.name != "cacheFile"
+        }
+        guard let sourceURL = components.url else { return nil }
+        let token = Data(sourceURL.absoluteString.utf8).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
