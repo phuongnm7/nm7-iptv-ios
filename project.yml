@@ -3,11 +3,6 @@ options:
   bundleIdPrefix: vn.phuongnm7
   deploymentTarget:
     iOS: "16.0"
-packages:
-  UPlayer:
-    url: https://github.com/MaximKomlev/UPlayer.git
-    branch: develop
-
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -56,8 +51,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
-    dependencies:
-      - package: UPlayer
   NM7IPTVTests:
     type: bundle.unit-test
     platform: iOS
