@@ -53,9 +53,6 @@ struct PlayerScreen: View {
                     }
                 }
 
-                if showControls {
-                    topBar
-                }
             }
         }
         .statusBarHidden(true)
@@ -81,12 +78,9 @@ struct PlayerScreen: View {
             VLCVideoSurface(channelPlayer: channelPlayer)
                 .opacity(channelPlayer.engine == .vlc ? 1 : 0)
 
-            if channelPlayer.isLoading {
-                ProgressView()
-                    .tint(NM7Theme.accent)
-                    .padding(14)
-                    .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-            }
+            // Do not show a persistent loading spinner over live video.
+            // DASH/ClearKey can remain in a buffering/loading state while frames are
+            // already being rendered; the player UI must not cover the picture.
 
             if showControls {
                 HStack {
@@ -103,6 +97,10 @@ struct PlayerScreen: View {
                 .padding(.horizontal, NM7DeviceProfile.isPhone ? 12 : 20)
                 .padding(.bottom, NM7DeviceProfile.isPhone ? 10 : 16)
                 .frame(maxHeight: .infinity, alignment: .bottom)
+
+                topBar
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .allowsHitTesting(true)
             }
         }
         .background(Color.black)
@@ -154,7 +152,7 @@ struct PlayerScreen: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
                 if isFullScreen {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -167,52 +165,62 @@ struct PlayerScreen: View {
             } label: {
                 Image(systemName: isFullScreen ? "arrow.down.left.and.arrow.up.right" : "chevron.left")
                     .font(.headline.weight(.bold))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 38, height: 38)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.black.opacity(0.75))
+            .tint(.black.opacity(0.78))
             .accessibilityLabel(isFullScreen ? "Thoát toàn màn hình" : "Đóng trình phát")
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(current.name)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .foregroundStyle(.white)
                 Text(current.group)
-                    .font(.caption)
+                    .font(.caption2)
+                    .lineLimit(1)
                     .foregroundStyle(.white.opacity(0.72))
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            if !NM7DeviceProfile.isPhone && !isFullScreen {
+            // Player actions stay inside the video pane, never over the group selector.
+            HStack(spacing: 7) {
                 VoiceSearchButton { transcript in
                     if let match = model.bestVoiceMatch(for: transcript) { play(match) }
                 }
-            }
+                .frame(width: 38, height: 38)
+                .background(.black.opacity(0.78), in: Circle())
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isFullScreen.toggle()
-                    showControls = true
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isFullScreen.toggle()
+                        showControls = true
+                    }
+                } label: {
+                    Image(systemName: isFullScreen
+                        ? "arrow.down.right.and.arrow.up.left"
+                        : "arrow.up.left.and.arrow.down.right")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 38, height: 38)
                 }
-            } label: {
-                Image(systemName: isFullScreen
-                    ? "arrow.down.right.and.arrow.up.left"
-                    : "arrow.up.left.and.arrow.down.right")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.black.opacity(0.75))
-            .accessibilityLabel(isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình")
+                .buttonStyle(.borderedProminent)
+                .tint(.black.opacity(0.78))
+                .accessibilityLabel(isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình")
 
-            Button { model.toggleFavorite(current) } label: {
-                Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
+                Button { model.toggleFavorite(current) } label: {
+                    Image(systemName: model.libraryStore.favoriteIDs.contains(current.id) ? "star.fill" : "star")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.black.opacity(0.78))
+                .accessibilityLabel("Yêu thích")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.black.opacity(0.75))
         }
-        .padding(NM7DeviceProfile.isPhone ? 8 : 12)
-        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, NM7DeviceProfile.isPhone ? 8 : 12)
+        .padding(.top, NM7DeviceProfile.isPhone ? 8 : 12)
+        .padding(.bottom, 6)
     }
 
     private var globalGesture: some Gesture {
