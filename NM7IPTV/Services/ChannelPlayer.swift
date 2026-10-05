@@ -140,7 +140,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
 
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
-        observe(item: item, drm: .none, channel: channel, allowVLCFallback: false)
+        observe(item: item, channel: channel, allowVLCFallback: false)
         engine = .avPlayer
         player.replaceCurrentItem(with: item)
         player.play()
@@ -161,7 +161,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "nm7.fairplay"))
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
-        observe(item: item, drm: drm, channel: channel, allowVLCFallback: false)
+        observe(item: item, channel: channel, allowVLCFallback: false)
         engine = .avPlayer
         player.replaceCurrentItem(with: item)
         player.play()
@@ -171,7 +171,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         let asset = AVURLAsset(url: channel.streamURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
-        observe(item: item, drm: .none, channel: channel, allowVLCFallback: true)
+        observe(item: item, channel: channel, allowVLCFallback: true)
         engine = .avPlayer
         player.replaceCurrentItem(with: item)
         player.play()
@@ -184,7 +184,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
         }
     }
 
-    private func observe(item: AVPlayerItem, drm: DRMInfo, channel: Channel, allowVLCFallback: Bool) {
+    private func observe(item: AVPlayerItem, channel: Channel, allowVLCFallback: Bool) {
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self else { return }
@@ -230,6 +230,8 @@ final class ChannelPlayer: NSObject, ObservableObject {
         vlcPlayer.play()
     }
 
+    func setLoading(_ value: Bool) { isLoading = value }
+
     func showError(_ message: String) { errorMessage = message }
 
     func stop() {
@@ -264,10 +266,10 @@ private final class DashPlayerBridge: NSObject, UPlayerDelegate {
     init(owner: ChannelPlayer) { self.owner = owner }
 
     func didEventPlayerStart(source: UPlayerProtocol) {
-        Task { @MainActor in owner?.isLoading = true }
+        Task { @MainActor in owner?.setLoading(true) }
     }
     func didEventPlayerPlay(source: UPlayerProtocol) {
-        Task { @MainActor in owner?.isLoading = false }
+        Task { @MainActor in owner?.setLoading(false) }
     }
     func didEventPlayerStop(source: UPlayerProtocol, error: Error?) {
         Task { @MainActor in
