@@ -6,6 +6,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         let kid: Data
         let ivSize: Int
         let constantIV: Data?
+        let defaultSampleSize: Int
     }
 
     private struct Box {
@@ -67,6 +68,16 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
     }
 
     private func parseTrackEncryption(_ data: Data, moov: Box) {
+        var trexDefaultSizes: [UInt32: Int] = [:]
+        if let mvex = childBoxes(data, parent: moov).first(where: { $0.type == "mvex" }) {
+            for trex in childBoxes(data, parent: mvex).filter({ $0.type == "trex" }) {
+                guard trex.contentStart + 16 <= trex.end else { continue }
+                let trackID = readUInt32(data, trex.contentStart + 4)
+                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 12))
+                trexDefaultSizes[trackID] = defaultSampleSize
+            }
+        }
+
         for trak in childBoxes(data, parent: moov).filter({ $0.type == "trak" }) {
             guard let tkhd = childBoxes(data, parent: trak).first(where: { $0.type == "tkhd" }),
                   let trackID = parseTrackID(data, tkhd: tkhd),
@@ -78,7 +89,8 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             tracks[trackID] = TrackInfo(
                 kid: parsed.kid,
                 ivSize: parsed.ivSize,
-                constantIV: parsed.constantIV
+                constantIV: parsed.constantIV,
+                defaultSampleSize: trexDefaultSizes[trackID] ?? 0
             )
         }
     }
@@ -140,36 +152,46 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
 
         for traf in childBoxes(source, parent: moof).filter({ $0.type == "traf" }) {
             guard let tfhd = childBoxes(source, parent: traf).first(where: { $0.type == "tfhd" }),
-                  let trun = childBoxes(source, parent: traf).first(where: { $0.type == "trun" }),
-                  let senc = childBoxes(source, parent: traf).first(where: { $0.type == "senc" }) else {
+                  let trun = childBoxes(source, parent: traf).first(where: { $0.type == "trun" }) else {
                 continue
             }
 
             let trackID = readUInt32(source, tfhd.contentStart + 4)
-            let info = tracks[trackID]
-            guard let kid = info?.kid ?? singleKID() else {
-                throw error("CENC không tìm thấy KID cho track \(trackID).")
+            guard let info = tracks[trackID] else {
+                // No tenc in the initialization segment means this track is not
+                // one of the CENC tracks handled by this processor.
+                continue
             }
-            let key = try await key(for: kid)
 
             let tfhdFlags = fullBoxFlags(source, tfhd)
             var tfhdCursor = tfhd.contentStart + 4
-            _ = readUInt32(source, tfhd.contentStart + 4)
-            tfhdCursor += 4
+            tfhdCursor += 4 // track_ID
 
             var baseOffset = moof.offset
             if (tfhdFlags & 0x000001) != 0 {
-                guard tfhdCursor + 8 <= tfhd.end else { throw error("tfhd thiếu base-data-offset.") }
-                baseOffset = Int(readUInt64(source, tfhdCursor))
+                guard tfhdCursor + 8 <= tfhd.end else {
+                    throw error("tfhd thiếu base-data-offset.")
+                }
+                let raw = readUInt64(source, tfhdCursor)
+                guard raw <= UInt64(Int.max) else {
+                    throw error("tfhd base-data-offset quá lớn.")
+                }
+                baseOffset = Int(raw)
                 tfhdCursor += 8
             }
             if (tfhdFlags & 0x000002) != 0 { tfhdCursor += 4 }
+
             var defaultSampleSize = 0
             if (tfhdFlags & 0x000008) != 0 { tfhdCursor += 4 }
             if (tfhdFlags & 0x000010) != 0 {
-                guard tfhdCursor + 4 <= tfhd.end else { throw error("tfhd thiếu default sample size.") }
+                guard tfhdCursor + 4 <= tfhd.end else {
+                    throw error("tfhd thiếu default sample size.")
+                }
                 defaultSampleSize = Int(readUInt32(source, tfhdCursor))
                 tfhdCursor += 4
+            }
+            if defaultSampleSize == 0 {
+                defaultSampleSize = info.defaultSampleSize
             }
 
             let (dataOffset, sampleSizes) = try parseTRUN(
@@ -179,17 +201,36 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 fallback: moof.end,
                 defaultSampleSize: defaultSampleSize
             )
-            let entries = try parseSENC(
-                source,
-                box: senc,
-                ivSize: info?.ivSize ?? 16,
-                constantIV: info?.constantIV
-            )
-            guard entries.count == sampleSizes.count else {
-                throw error("CENC senc/trun sample count không khớp (senc=\(entries.count), trun=\(sampleSizes.count)).")
-            }
-            var sampleOffset = dataOffset
 
+            let trafChildren = childBoxes(source, parent: traf)
+            let entries: [SENCEntry]
+            if let senc = trafChildren.first(where: { $0.type == "senc" }) {
+                entries = try parseSENC(
+                    source,
+                    box: senc,
+                    ivSize: info.ivSize,
+                    constantIV: info.constantIV
+                )
+            } else if let saiz = trafChildren.first(where: { $0.type == "saiz" }),
+                      let saio = trafChildren.first(where: { $0.type == "saio" }) {
+                entries = try parseAuxiliaryEncryption(
+                    source,
+                    saiz: saiz,
+                    saio: saio,
+                    baseOffset: baseOffset,
+                    ivSize: info.ivSize,
+                    constantIV: info.constantIV,
+                    sampleCount: sampleSizes.count
+                )
+            } else {
+                throw error("CENC fragment thiếu senc hoặc saiz/saio cho track (trackID).")
+            }
+
+            guard entries.count == sampleSizes.count else {
+                throw error("CENC encryption/sample count không khớp (enc=(entries.count), trun=(sampleSizes.count)).")
+            }
+
+            var sampleOffset = dataOffset
             for index in 0..<entries.count {
                 let size = sampleSizes[index]
                 guard size > 0, sampleOffset >= 0, sampleOffset + size <= output.count else {
@@ -199,7 +240,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
                 var sample = output.subdata(in: sampleOffset..<(sampleOffset + size))
                 try decryptSample(
                     &sample,
-                    key: key,
+                    key: try await key(for: info.kid),
                     iv: entries[index].iv,
                     subsamples: entries[index].subsamples
                 )
@@ -209,6 +250,140 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
         }
 
         return output
+    }
+
+    private func parseAuxiliaryEncryption(
+        _ data: Data,
+        saiz: Box,
+        saio: Box,
+        baseOffset: Int,
+        ivSize: Int,
+        constantIV: Data?,
+        sampleCount: Int
+    ) throws -> [SENCEntry] {
+        let sizes = try parseSAIZ(data, box: saiz)
+        guard sizes.count == sampleCount else {
+            throw error("CENC saiz/trun sample count không khớp.")
+        }
+
+        let offsets = try parseSAIO(data, box: saio)
+        guard let first = offsets.first, first <= UInt64(Int.max) else {
+            throw error("CENC saio không có offset hợp lệ.")
+        }
+
+        let relative = Int(first)
+        let candidates = [baseOffset + relative, relative].filter {
+            $0 >= 0 && $0 < data.count
+        }
+
+        guard let auxStart = candidates.first(where: { start in
+            start + sizes.reduce(0, +) <= data.count
+        }) else {
+            throw error("CENC saio trỏ ra ngoài fragment.")
+        }
+
+        var cursor = auxStart
+        var result: [SENCEntry] = []
+        result.reserveCapacity(sampleCount)
+
+        for size in sizes {
+            guard size >= 0, cursor + size <= data.count else {
+                throw error("CENC sample auxiliary data vượt kích thước fragment.")
+            }
+            let end = cursor + size
+            let iv: Data
+            if ivSize > 0 {
+                guard cursor + ivSize <= end else { throw error("CENC auxiliary data thiếu IV.") }
+                iv = data.subdata(in: cursor..<(cursor + ivSize))
+                cursor += ivSize
+            } else {
+                guard let constantIV else { throw error("CENC thiếu constant IV.") }
+                iv = constantIV
+            }
+
+            var subs: [(clear: Int, encrypted: Int)]?
+            if cursor < end {
+                guard cursor + 2 <= end else { throw error("CENC auxiliary data thiếu subsample count.") }
+                let count = Int(readUInt16(data, cursor))
+                cursor += 2
+                var items: [(clear: Int, encrypted: Int)] = []
+                items.reserveCapacity(count)
+                for _ in 0..<count {
+                    guard cursor + 6 <= end else { throw error("CENC auxiliary subsample thiếu dữ liệu.") }
+                    items.append((
+                        clear: Int(readUInt16(data, cursor)),
+                        encrypted: Int(readUInt32(data, cursor + 2))
+                    ))
+                    cursor += 6
+                }
+                subs = items
+            }
+
+            guard cursor <= end else { throw error("CENC auxiliary data bị tràn.") }
+            result.append(SENCEntry(iv: iv, subsamples: subs))
+            cursor = end
+        }
+
+        return result
+    }
+
+    private func parseSAIZ(_ data: Data, box: Box) throws -> [Int] {
+        let flags = fullBoxFlags(data, box)
+        var cursor = box.contentStart
+
+        if (flags & 0x000001) != 0 {
+            guard cursor + 8 <= box.end else { throw error("saiz thiếu aux_info_type.") }
+            cursor += 8
+        }
+
+        guard cursor + 5 <= box.end else { throw error("saiz thiếu sample count.") }
+        let defaultSize = Int(data[cursor])
+        cursor += 1
+        let count = Int(readUInt32(data, cursor))
+        cursor += 4
+
+        if defaultSize != 0 {
+            return Array(repeating: defaultSize, count: count)
+        }
+
+        guard cursor + count <= box.end else { throw error("saiz thiếu bảng sample info size.") }
+        var result: [Int] = []
+        result.reserveCapacity(count)
+        for _ in 0..<count {
+            result.append(Int(data[cursor]))
+            cursor += 1
+        }
+        return result
+    }
+
+    private func parseSAIO(_ data: Data, box: Box) throws -> [UInt64] {
+        let flags = fullBoxFlags(data, box)
+        var cursor = box.contentStart
+
+        if (flags & 0x000001) != 0 {
+            guard cursor + 8 <= box.end else { throw error("saio thiếu aux_info_type.") }
+            cursor += 8
+        }
+
+        guard cursor + 4 <= box.end else { throw error("saio thiếu entry count.") }
+        let count = Int(readUInt32(data, cursor))
+        cursor += 4
+
+        let width = data[box.offset + 8] == 0 ? 4 : 8
+        guard cursor + count * width <= box.end else { throw error("saio thiếu offset table.") }
+
+        var result: [UInt64] = []
+        result.reserveCapacity(count)
+        for _ in 0..<count {
+            if width == 4 {
+                result.append(UInt64(readUInt32(data, cursor)))
+                cursor += 4
+            } else {
+                result.append(readUInt64(data, cursor))
+                cursor += 8
+            }
+        }
+        return result
     }
 
     private func parseTRUN(
