@@ -36,4 +36,18 @@ final class DRMInfoTests: XCTestCase {
             .clearKey
         )
     }
+    func testInlineClearKeyIsPreservedAsLicenseValue() {
+        let info = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
+        ])
+
+        XCTAssertEqual(info.system, .clearKey)
+        XCTAssertEqual(
+            info.licenseValue,
+            "00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100"
+        )
+        XCTAssertNil(info.licenseURL)
+    }
+
 }
