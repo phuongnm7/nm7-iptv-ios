@@ -19,12 +19,13 @@ final class CENCResourceProcessorTests: XCTestCase {
         let processor = CENCResourceProcessor(drm: drm, headers: [:])
 
         let tkhd = makeFullBoxBox(type: "tkhd", version: 0, flags: 0, body: {
-            var body = Data(repeating: 0, count: 16)
-            body.replaceSubrange(12..<16, with: [0, 0, 0, 1])
+            var body = Data(repeating: 0, count: 12)
+            body.replaceSubrange(8..<12, with: [0, 0, 0, 1])
             return body
         }())
         let tenc = makeTENC(version: 0, isProtected: 1, ivSize: 16, kid: Data(hex: kidHex))
-        let moov = makeBox("moov", tkhd + makeBox("tenc", tenc.dropFirst(8)))
+        let trak = makeBox("trak", tkhd + tenc)
+        let moov = makeBox("moov", trak)
 
         let tfhd = makeFullBoxBox(type: "tfhd", version: 0, flags: 0, body: Data([0, 0, 0, 1]))
         let senc = makeFullBoxBox(type: "senc", version: 0, flags: 0, body:
