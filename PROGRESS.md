@@ -14,6 +14,13 @@
 
 ### Trạng thái build hiện tại
 
+- **Mới nhất sau sửa DRM/player:** commit `88743022709311c19537b57ce3516a4a6ff077bd`.
+- **GitHub Actions run #153 — SUCCESS toàn bộ**: Simulator, Unit Tests, Device Release, Package IPA và Upload Artifact.
+- **Artifact mới:** `NM7-IPTV-iOS-1.0.69-final-unsigned-IPA`, ID `11335080731`.
+- **Artifact digest:** `sha256:3ea7d2d447aaed7413f10de7afb6a6631f1ae167e7f35082c5b6e2a55c2ef4e6`.
+- IPA đã tải và kiểm tra: version `1.0.69`, build `69`, ZIP integrity PASS.
+- SHA256 file IPA mới: `d3d8ac8be9930d3216108ae737503a5bac20d5499cd43daeb82bced2f73b0cc0`.
+
 - iOS Marketing Version: **1.0.69**.
 - iOS Bundle Version: **69**.
 - Deployment target: **iOS/iPadOS 16.0+**.
@@ -54,20 +61,34 @@
 - Xử lý buffering, stalled và fallback sang VLC.
 - Metadata bundle đã đồng bộ lên 1.0.69.
 
+### Sửa lỗi DRM/CENC và player UI — 2026-10-05
+
+- Sửa parser `tenc` của CENC: đọc đúng `default_Per_Sample_IV_Size` và `default_KID` theo cấu trúc Track Encryption Box thay vì lệch 1 byte.
+- Hỗ trợ đọc constant IV theo đúng vị trí sau KID khi per-sample IV size bằng 0.
+- Bắt lỗi mismatch giữa số sample trong `senc` và `trun` thay vì âm thầm giải mã thiếu sample.
+- Giữ đường ClearKey CENC theo playlist metadata `drm_legacy` / `license_key`, không bypass DRM.
+- Xóa spinner `ProgressView` phủ lên video player để không còn vòng quay cố định khi live stream đang phát/buffer.
+- Đưa 3 nút **microphone / toàn màn hình / yêu thích** vào vùng điều khiển phía trên của **video pane**, không còn phủ lên vùng chọn nhóm kênh.
+- Thêm unit test cho inline ClearKey dạng `KID:KEY`.
+- Run #153 xác nhận toàn bộ source sau các thay đổi biên dịch và đóng gói IPA thành công.
+
 ### Nguyên tắc player cho iOS
 
 - Ưu tiên API native của Apple thay vì sao chép pipeline Android.
 - Không phá hoặc tháo DRM của nguồn bên thứ ba.
-- Với DASH/DRM chưa có đường phát native iOS tương thích, app báo trạng thái rõ ràng.
+- Với DASH/ClearKey CENC, app có đường xử lý native: MPD → fragmented MP4/HLS → giải mã sample CENC bằng ClearKey → AVPlayer.
+- Với Widevine/PlayReady không có CDM tương ứng trong nhánh này, app không cố phá DRM và không giả định rằng build thành công đồng nghĩa đã phát được.
+- Với HLS tương thích iOS, ưu tiên AVPlayer; lỗi tương thích hoặc stall kéo dài thì dùng VLC fallback.
 - Với HLS tương thích iOS, ưu tiên AVPlayer; lỗi tương thích hoặc stall kéo dài thì dùng VLC fallback.
 
 ### Việc đang thực hiện tiếp
 
-1. Đối chiếu từng màn hình với Android TV 1.0.69 để đồng bộ bố cục, khoảng cách, font, card kênh, logo và player UI.
-2. Đồng bộ hành vi chuyển kênh, thứ tự nhóm, yêu thích/gần đây và tìm kiếm.
-3. Hoàn thiện player screen cho iPhone/iPad: fullscreen, landscape, điều khiển phát/tạm dừng, chuyển kênh và xử lý nền.
-4. Kiểm thử nguồn HLS thực tế trên iPhone/iPad, ưu tiên VTV/VTVcab/Thể Thao.
-5. Giữ workflow build + unit test + IPA validation xanh trên GitHub Actions.
+1. Kiểm thử thực tế trên iPhone/iPad một kênh DASH/ClearKey có quyền phát để xác nhận end-to-end license/MPD/segment/decryption.
+2. Đối chiếu từng màn hình với Android TV 1.0.69 để đồng bộ bố cục, khoảng cách, font, card kênh, logo và player UI.
+3. Đồng bộ hành vi chuyển kênh, thứ tự nhóm, yêu thích/gần đây và tìm kiếm.
+4. Hoàn thiện player screen cho iPhone/iPad: fullscreen, landscape, điều khiển phát/tạm dừng, chuyển kênh và xử lý nền.
+5. Kiểm thử nguồn HLS thực tế trên iPhone/iPad, ưu tiên VTV/VTVcab/Thể Thao.
+6. Giữ workflow build + unit test + IPA validation xanh trên GitHub Actions.
 
 ### Lịch sử nền trước 1.0.69
 
