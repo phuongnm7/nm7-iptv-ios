@@ -49,7 +49,6 @@ struct ChannelCardView: View {
         }
         .buttonStyle(.plain)
         .focused($focused)
-        .focusable(NM7DeviceProfile.isPad)
         .scaleEffect(focused && NM7DeviceProfile.isPad ? 1.12 : 1)
         .animation(.easeOut(duration: 0.12), value: focused)
         .contextMenu {
