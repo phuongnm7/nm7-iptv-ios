@@ -15,6 +15,10 @@ public protocol UPlayerAVAssetResourceLoaderDelegate: AnyObject {
     func getPlaylist(source: UPlayerAVAssetResourceLoaderProtocol, url: URL) -> String?
 }
 
+public protocol UPlayerMediaResourceProcessor: AnyObject {
+    func processMediaData(_ data: Data, sourceURL: URL) throws -> Data
+}
+
 public protocol UPlayerAVAssetResourceLoaderTranscodingDelegate: AnyObject {
     func getAudioTranscoder(source: UPlayerAVAssetResourceLoaderProtocol) -> UPlayerAudioTranscoderProtocol?
 }
@@ -29,6 +33,7 @@ internal final class UPlayerAVAssetResourceLoader: NSObject, UPlayerAVAssetResou
     public weak var dataDelegate: UPlayerAVAssetResourceLoaderDelegate?
     public weak var transcoderDelegate: UPlayerAVAssetResourceLoaderTranscodingDelegate?
     public var mediaRequestHeader: [String: Any]?
+    public weak var mediaResourceProcessor: UPlayerMediaResourceProcessor?
     private let transcodedCache = NSCache<NSString, NSData>()
     private lazy var persistentMediaCacheManager: UPlayerMediaCacheManager? = {
         return UPlayerMediaCacheManager(rootDirectory: commonCacheDirectory)
@@ -116,6 +121,29 @@ extension UPlayerAVAssetResourceLoader {
         
         let result = filteredQuery.isEmpty ? base : "\(base)?\(filteredQuery)"
         return URL(string: result)
+    }
+}
+
+extension UPlayerAVAssetResourceLoader {
+    fileprivate func handleCENC(url: URL, loadingRequest: AVAssetResourceLoadingRequest) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard let realURL = originalHTTPURL(from: url) else {
+                    throw UPlayerError.assetLoadingFailed
+                }
+                let data = try await download(url: realURL)
+                let processed = try mediaResourceProcessor?.processMediaData(data, sourceURL: realURL) ?? data
+                guard !processed.isEmpty else { throw UPlayerError.emptyDownload }
+                respond(data: processed,
+                        uti: UTType(filenameExtension: "mp4")?.identifier ?? "public.mpeg-4",
+                        mimeType: "video/mp4",
+                        byteRangeSupported: true,
+                        loadingRequest: loadingRequest)
+            } catch {
+                loadingRequest.finishLoading(with: error)
+            }
+        }
     }
 }
 
