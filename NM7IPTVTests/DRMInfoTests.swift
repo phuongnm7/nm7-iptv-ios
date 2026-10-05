@@ -51,6 +51,17 @@ final class DRMInfoTests: XCTestCase {
     }
 
 
+    func testNamedPairInlineClearKeyIsNotTreatedAsLicenseURL() {
+        let info = DRMInfo.from(options: [
+            "#KODIPROP:inputstream.adaptive.license_type=clearkey",
+            "#KODIPROP:inputstream.adaptive.license_key=kid=00112233445566778899aabbccddeeff&key=ffeeddccbbaa99887766554433221100"
+        ])
+
+        XCTAssertEqual(info.system, .clearKey)
+        XCTAssertNil(info.licenseURL)
+        XCTAssertEqual(ClearKeyContentKeySession.parsePairs(info.licenseValue).count, 1)
+    }
+
     func testClearKeyNamedPairMatchesAndroidFormat() {
         let pairs = ClearKeyContentKeySession.parsePairs(
             "kid=00112233445566778899aabbccddeeff&key=ffeeddccbbaa99887766554433221100"
