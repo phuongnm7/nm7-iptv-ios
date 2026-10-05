@@ -248,7 +248,7 @@ def get_segment_from_template(mpd_url, root, period, adaptation, rep):
     time=int(s.attrib.get("t","0")) if s is not None else 0
     def sub(template):
         vals={"Number":str(number),"Time":str(time),"RepresentationID":rep.attrib.get("id",""),"Bandwidth":rep.attrib.get("bandwidth","0")}
-        return re.sub(r"\\$(Number|Time|RepresentationID|Bandwidth)(?:%0(\\d+)d)?\\$",lambda m: vals[m.group(1)].zfill(int(m.group(2))) if m.group(2) and vals[m.group(1)].isdigit() else vals[m.group(1)],template)
+        return re.sub(r"\$(Number|Time|RepresentationID|Bandwidth)(?:%0(\d+)d)?\$",lambda m: vals[m.group(1)].zfill(int(m.group(2))) if m.group(2) and vals[m.group(1)].isdigit() else vals[m.group(1)],template)
     iu=urljoin(base,sub(t.attrib.get("initialization","")))
     mu=urljoin(base,sub(t.attrib.get("media","")))
     return (*get(iu)[:1],*get(mu)[:1],iu,mu)
