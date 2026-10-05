@@ -114,7 +114,79 @@ enum M3UParser {
             options.removeAll(keepingCapacity: true)
         }
 
-        return Result(channels: channels, epgURL: epgURL)
+        return Result(channels: makeIOSCompatible(channels), epgURL: epgURL)
+    }
+
+    /// iOS cannot invoke the Widevine CDM used by the "Dự phòng" VTV entries.
+    /// The same playlist already contains non-DRM HLS versions for VTV2/3/7/9/10.
+    /// Keep those backup entries visible, but make their playback URL point to the
+    /// known HLS stream so the iOS app can actually play the backup group.
+    private static func makeIOSCompatible(_ channels: [Channel]) -> [Channel] {
+        var result: [Channel] = []
+        result.reserveCapacity(channels.count)
+
+        let primaryByName: [String: Channel] = Dictionary(
+            channels
+                .filter { !$0.isDASH && !$0.isLikelyDRM }
+                .map { (backupKey($0.name), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for channel in channels {
+            let normalizedGroup = normalizeGroup(channel.group)
+            guard normalizedGroup == "VTV dự phòng" else {
+                result.append(channel)
+                continue
+            }
+
+            let key = backupKey(channel.name)
+            if let primary = primaryByName[key], primary.isHLS {
+                let replacement = Channel(
+                    name: channel.name,
+                    group: "VTV dự phòng",
+                    tvgID: channel.tvgID.isEmpty ? primary.tvgID : channel.tvgID,
+                    logoURL: channel.logoURL ?? primary.logoURL,
+                    streamURL: primary.streamURL,
+                    httpHeaders: primary.httpHeaders,
+                    options: ["#NM7-IOS-VTV-BACKUP-HLS"]
+                )
+                result.append(replacement)
+            } else {
+                // Preserve an unsupported entry rather than silently deleting it.
+                result.append(channel)
+            }
+        }
+
+        return result
+    }
+
+    private static func normalizeGroup(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalized.contains("dự phòng") || normalized.contains("du phong") {
+            return "VTV dự phòng"
+        }
+        return value
+    }
+
+    private static func backupKey(_ value: String) -> String {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "đ", with: "d")
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+
+        if let range = normalized.range(of: "vtv") {
+            let suffix = normalized[range.upperBound...]
+            let number = suffix.prefix { $0.isNumber }
+            if !number.isEmpty {
+                return "vtv" + number
+            }
+        }
+        return normalized
     }
 
     private static func parseVLCOption(_ option: String, into headers: inout [String: String]) -> Bool {
