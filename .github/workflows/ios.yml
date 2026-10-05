@@ -72,11 +72,16 @@ jobs:
           /usr/bin/zip -qry -X NM7-IPTV-iOS-1.0.69-unsigned.ipa Payload
           unzip -t NM7-IPTV-iOS-1.0.69-unsigned.ipa
           unzip -Z1 NM7-IPTV-iOS-1.0.69-unsigned.ipa > ipa-contents.txt
-          grep -Fxq "Payload/NM7IPTV.app/Info.plist" ipa-contents.txt
-          grep -Fxq "Payload/NM7IPTV.app/NM7IPTV" ipa-contents.txt
-          find Payload/NM7IPTV.app/Frameworks -maxdepth 2 -name "*VLCKit*" -print -quit | grep -q .
-          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Payload/NM7IPTV.app/Info.plist | grep -Fxq "1.0.69"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Payload/NM7IPTV.app/Info.plist | grep -Fxq "69"
+          test -f "Payload/NM7IPTV.app/Info.plist"
+          test -f "Payload/NM7IPTV.app/NM7IPTV"
+          VLC_BINARY="$(find Payload/NM7IPTV.app/Frameworks -maxdepth 3 -type f -name "MobileVLCKit" -print -quit)"
+          test -n "$VLC_BINARY"
+          VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Payload/NM7IPTV.app/Info.plist)"
+          BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Payload/NM7IPTV.app/Info.plist)"
+          echo "IPA_VERSION=$VERSION IPA_BUILD=$BUILD"
+          echo "VLC_BINARY=$VLC_BINARY"
+          test "$VERSION" = "1.0.69"
+          test "$BUILD" = "69"
           shasum -a 256 NM7-IPTV-iOS-1.0.69-unsigned.ipa > NM7-IPTV-iOS-1.0.69-unsigned.ipa.sha256
 
       - name: Upload unsigned IPA
