@@ -1,30 +1,53 @@
 import Foundation
 
 enum M3UParser {
-    static func parse(_ text: String) -> [Channel] {
+    struct Result {
+        let channels: [Channel]
+        let epgURL: URL?
+    }
+
+    static func parse(_ text: String) -> Result {
         let lines = text.replacingOccurrences(of: "\u{FEFF}", with: "")
             .components(separatedBy: .newlines)
         var result: [Channel] = []
         var metadata: String?
         var headers: [String: String] = [:]
+        var options: [String] = []
+        var epgURL: URL?
 
         for raw in lines {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
 
+            if line.hasPrefix("#EXTM3U") {
+                if let value = attribute("url-tvg", in: line) ?? attribute("x-tvg-url", in: line) {
+                    epgURL = URL(string: value)
+                }
+                continue
+            }
+
             if line.hasPrefix("#EXTINF:") {
                 metadata = line
                 headers.removeAll(keepingCapacity: true)
+                options.removeAll(keepingCapacity: true)
                 continue
             }
+
+            if line.uppercased().hasPrefix("#KODIPROP:") {
+                options.append(line)
+                continue
+            }
+
             if line.uppercased().hasPrefix("#EXTVLCOPT:") {
                 parseVLCOption(String(line.dropFirst("#EXTVLCOPT:".count)), into: &headers)
                 continue
             }
+
             if line.uppercased().hasPrefix("#EXTHTTP:") {
                 parseJSONHeaders(String(line.dropFirst("#EXTHTTP:".count)), into: &headers)
                 continue
             }
+
             guard !line.hasPrefix("#"), let info = metadata else { continue }
 
             let split = splitURLAndHeaders(line)
@@ -33,39 +56,55 @@ enum M3UParser {
                   ["http", "https"].contains(scheme) else {
                 metadata = nil
                 headers.removeAll(keepingCapacity: true)
+                options.removeAll(keepingCapacity: true)
                 continue
             }
+
             headers.merge(split.headers) { _, inline in inline }
-            let name = info.split(separator: ",", maxSplits: 1).last.map(String.init)?
+
+            let name = info.split(separator: ",", maxSplits: 1).last
+                .map(String.init)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Kênh"
+
             let group = attribute("group-title", in: info) ?? "Chưa phân nhóm"
+            let tvgID = attribute("tvg-id", in: info) ?? ""
             let logo = attribute("tvg-logo", in: info).flatMap(URL.init(string:))
+
             result.append(Channel(
                 name: name,
                 group: group,
+                tvgID: tvgID,
                 logoURL: logo,
                 streamURL: url,
-                httpHeaders: headers
+                httpHeaders: headers,
+                options: options
             ))
+
             metadata = nil
             headers.removeAll(keepingCapacity: true)
+            options.removeAll(keepingCapacity: true)
         }
-        return result
+
+        return Result(channels: result, epgURL: epgURL)
     }
 
     private static func splitURLAndHeaders(_ line: String) -> (url: String, headers: [String: String]) {
         guard let pipe = line.firstIndex(of: "|") else {
             return (line.trimmingCharacters(in: .whitespacesAndNewlines), [:])
         }
+
         let url = String(line[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
         let query = String(line[line.index(after: pipe)...])
         var headers: [String: String] = [:]
+
         for pair in query.split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { continue }
             let key = normalizeHeader(parts[0].removingPercentEncoding ?? parts[0])
             let value = parts[1].removingPercentEncoding ?? parts[1]
-            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") { headers[key] = value }
+            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") {
+                headers[key] = value
+            }
         }
         return (url, headers)
     }
@@ -83,7 +122,9 @@ enum M3UParser {
         for (rawKey, rawValue) in object {
             guard let value = rawValue as? String else { continue }
             let key = normalizeHeader(rawKey)
-            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") { headers[key] = value }
+            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") {
+                headers[key] = value
+            }
         }
     }
 
