@@ -227,30 +227,61 @@ final class ChannelPlayer: NSObject, ObservableObject {
         }
     }
 
-    private func startVLCFallback(for channel: Channel) {
-        guard currentChannel?.id == channel.id, engine == .avPlayer else { return }
+    private func shouldPreferVLC(for channel: Channel) -> Bool {
+        guard DRMInfo.from(options: channel.options).system == .none else {
+            return false
+        }
+        return channel.prefersVLC
+    }
+
+    private func startVLC(for channel: Channel) {
+        guard currentChannel?.id == channel.id else { return }
+
         fallbackTask?.cancel()
+        fallbackTask = nil
         itemObservation = nil
+
         player.pause()
         player.replaceCurrentItem(with: nil)
 
         let media = VLCMedia(url: channel.streamURL)
-        var options: [String: Any] = ["network-caching": 1800, "clock-jitter": 0, "clock-synchro": 0]
+        var options: [String: Any] = [
+            "network-caching": 1500,
+            "clock-jitter": 0,
+            "clock-synchro": 0,
+            "http-reconnect": true,
+            "http-continuous": true
+        ]
+
         for (name, value) in channel.httpHeaders {
             switch name.lowercased() {
-            case "user-agent": options["http-user-agent"] = value
-            case "referer": options["http-referrer"] = value
-            case "cookie": options["http-cookie"] = value
-            default: options["http-header"] = "\(name): \(value)"
+            case "user-agent":
+                options["http-user-agent"] = value
+            case "referer":
+                options["http-referrer"] = value
+            case "cookie":
+                options["http-cookie"] = value
+            default:
+                break
             }
         }
-        if options["http-user-agent"] == nil { options["http-user-agent"] = "NM7-TV-iOS/1.0.71" }
+
+        if options["http-user-agent"] == nil {
+            options["http-user-agent"] = "NM7-TV-iOS/1.0.72"
+        }
+
         media.addOptions(options)
         engine = .vlc
         isLoading = true
+        errorMessage = nil
         vlcPlayer.drawable = vlcDrawable
         vlcPlayer.media = media
         vlcPlayer.play()
+    }
+
+    private func startVLCFallback(for channel: Channel) {
+        guard currentChannel?.id == channel.id, engine == .avPlayer else { return }
+        startVLC(for: channel)
     }
 
     func setLoading(_ value: Bool) { isLoading = value }
