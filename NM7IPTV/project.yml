@@ -1,0 +1,67 @@
+name: NM7IPTV
+options:
+  bundleIdPrefix: vn.phuongnm7
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0.69"
+    CURRENT_PROJECT_VERSION: "69"
+    DEVELOPMENT_TEAM: ""
+targets:
+  NM7IPTV:
+    type: application
+    platform: iOS
+    sources:
+      - NM7IPTV
+    resources:
+      - NM7IPTV/Resources
+    info:
+      path: NM7IPTV/Info.plist
+      properties:
+        CFBundleDisplayName: NM7 TV
+        CFBundleShortVersionString: "1.0.69"
+        CFBundleVersion: "69"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        LSApplicationQueriesSchemes:
+          - youtube
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSMicrophoneUsageDescription: NM7 TV dùng micro để tìm và mở kênh bằng giọng nói.
+        NSSpeechRecognitionUsageDescription: NM7 TV dùng nhận dạng giọng nói để tìm và mở kênh.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+  NM7IPTVTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - NM7IPTVTests
+    dependencies:
+      - target: NM7IPTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: vn.phuongnm7.nm7iptv.tests
+schemes:
+  NM7IPTV:
+    build:
+      targets:
+        NM7IPTV: all
+        NM7IPTVTests: [test]
+    test:
+      targets:
+        - NM7IPTVTests

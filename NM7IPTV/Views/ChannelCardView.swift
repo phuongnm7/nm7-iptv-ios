@@ -1,74 +1,99 @@
 import SwiftUI
+import UIKit
 
 struct ChannelCardView: View {
     let channel: Channel
     let isFavorite: Bool
-    let accent: Color
+    let isPlaying: Bool
+    let metrics: NM7Theme.Metrics
     let onPlay: () -> Void
     let onFavorite: () -> Void
 
+    @FocusState private var focused: Bool
+
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Button(action: onPlay) {
-                VStack(spacing: 8) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 178, height: 100)
-
-                        if let logo = channel.logoURL {
-                            AsyncImage(url: logo) { phase in
-                                if case .success(let image) = phase {
-                                    image.resizable().scaledToFit().padding(13)
-                                } else {
-                                    placeholder
-                                }
+        Button(action: onPlay) {
+            VStack(spacing: 0) {
+                ZStack {
+                    if focused && NM7DeviceProfile.isPad {
+                        Circle()
+                            .fill(Color(red: 64 / 255, green: 169 / 255, blue: 255 / 255).opacity(0.33))
+                            .frame(width: 60, height: 60)
+                            .overlay {
+                                Circle()
+                                    .stroke(Color(red: 47 / 255, green: 155 / 255, blue: 255 / 255), lineWidth: 5)
                             }
-                            .frame(width: 162, height: 84)
-                        } else {
-                            placeholder
-                        }
-
-                        if channel.isLikelyDRM {
-                            Text("DRM")
-                                .font(.caption2.weight(.bold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(.black.opacity(0.65), in: Capsule())
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                                .padding(7)
-                        }
                     }
 
-                    Text(channel.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .frame(width: 178, alignment: .leading)
+                    Circle()
+                        .stroke(
+                            focused ? .white : (isPlaying ? NM7Theme.accent : .clear),
+                            lineWidth: 2
+                        )
+                        .frame(width: 54, height: 54)
 
-                    Text(channel.group)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(width: 178, alignment: .leading)
+                    ChannelLogoView(channel: channel, diameter: metrics.logoDiameter)
                 }
-            }
-            .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .frame(height: max(44, metrics.cardHeight - 18))
 
-            Button(action: onFavorite) {
-                Image(systemName: isFavorite ? "star.fill" : "star")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(isFavorite ? .yellow : .white)
-                    .frame(width: 30, height: 30)
-                    .background(.black.opacity(0.5), in: Circle())
+                Text(channel.name)
+                    .font(.system(size: NM7DeviceProfile.isPad ? 11 : 10.5, weight: focused ? .bold : .regular))
+                    .foregroundStyle(NM7Theme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 18)
             }
-            .buttonStyle(.plain)
-            .padding(6)
+            .frame(width: metrics.cardWidth, height: metrics.cardHeight)
         }
+        .buttonStyle(.plain)
+        .focused($focused)
+        .focusable(NM7DeviceProfile.isPad)
+        .scaleEffect(focused && NM7DeviceProfile.isPad ? 1.12 : 1)
+        .animation(.easeOut(duration: 0.12), value: focused)
+        .contextMenu {
+            Button(isFavorite ? "Bỏ Yêu thích" : "Thêm vào Yêu thích", systemImage: isFavorite ? "star.slash" : "star") {
+                onFavorite()
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.45) {
+            if !NM7DeviceProfile.isPad { onFavorite() }
+        }
+        .accessibilityLabel(channel.name)
+        .accessibilityHint(isPlaying ? "Đang phát" : "Mở kênh")
     }
+}
 
-    private var placeholder: some View {
-        Image(systemName: "tv.fill")
-            .font(.system(size: 30, weight: .bold))
-            .foregroundStyle(accent.opacity(0.8))
+private struct ChannelLogoView: View {
+    let channel: Channel
+    let diameter: CGFloat
+
+    @State private var data: Data?
+    @State private var failed = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(NM7Theme.surface.opacity(0.9))
+                .overlay(Circle().stroke(NM7Theme.textSecondary.opacity(0.16), lineWidth: 1))
+
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: max(10, diameter - 4), height: max(10, diameter - 4))
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: failed ? "tv.fill" : "dot.radiowaves.left.and.right")
+                    .font(.system(size: diameter * 0.42, weight: .bold))
+                    .foregroundStyle(NM7Theme.accent.opacity(0.82))
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .task(id: channel.id) {
+            data = await ChannelLogoStore.shared.imageData(for: channel)
+            failed = data == nil
+        }
     }
 }

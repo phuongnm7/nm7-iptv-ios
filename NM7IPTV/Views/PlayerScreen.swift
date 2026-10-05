@@ -1,5 +1,6 @@
 import AVKit
 import SwiftUI
+import UIKit
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -8,6 +9,7 @@ struct PlayerScreen: View {
 
     @State private var current: Channel
     @State private var group: String
+    @State private var showControls = true
     @StateObject private var channelPlayer = ChannelPlayer()
 
     init(model: AppViewModel, initialChannel: Channel) {
@@ -24,23 +26,34 @@ struct PlayerScreen: View {
     var body: some View {
         GeometryReader { geometry in
             let landscape = geometry.size.width > geometry.size.height
+            let split = NM7DeviceProfile.isPad && landscape && geometry.size.width >= 700
+
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if landscape && geometry.size.width >= 700 {
+                if split {
                     HStack(spacing: 0) {
                         videoPane
-                        channelPanel.frame(width: min(380, geometry.size.width * 0.34))
+                        channelPanel.frame(width: min(380, max(300, geometry.size.width * 0.32)))
                     }
                 } else {
                     VStack(spacing: 0) {
-                        videoPane.frame(height: min(geometry.size.width * 9 / 16, 420))
+                        videoPane
+                            .frame(
+                                height: NM7DeviceProfile.isPhone
+                                    ? min(geometry.size.width * 9 / 16, 245)
+                                    : min(geometry.size.width * 9 / 16, 440)
+                            )
                         channelPanel
                     }
                 }
 
-                topBar
+                if showControls {
+                    topBar
+                }
             }
+            .contentShape(Rectangle())
+            .gesture(globalGesture)
         }
         .statusBarHidden(true)
         .onAppear { play(current) }
@@ -67,7 +80,7 @@ struct PlayerScreen: View {
 
             if channelPlayer.isLoading || !channelPlayer.statusMessage.isEmpty {
                 VStack(spacing: 8) {
-                    if channelPlayer.isLoading { ProgressView() }
+                    if channelPlayer.isLoading { ProgressView().tint(NM7Theme.accent) }
                     if !channelPlayer.statusMessage.isEmpty {
                         Text(channelPlayer.statusMessage)
                             .font(.subheadline)
@@ -76,32 +89,30 @@ struct PlayerScreen: View {
                     }
                 }
                 .padding(16)
-                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+                .background(.black.opacity(0.74), in: RoundedRectangle(cornerRadius: 14))
                 .frame(maxWidth: 360)
+            }
+
+            if showControls {
+                HStack {
+                    playerButton("backward.end.fill") { changeChannel(by: -1) }
+                    Spacer()
+                    playerButton(channelPlayer.isPlaying ? "pause.fill" : "play.fill") {
+                        channelPlayer.togglePlayPause()
+                    }
+                    Spacer()
+                    playerButton("forward.end.fill") { changeChannel(by: 1) }
+                }
+                .padding(.horizontal, NM7DeviceProfile.isPhone ? 12 : 20)
+                .padding(.bottom, NM7DeviceProfile.isPhone ? 10 : 16)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
         .background(Color.black)
-        .overlay(alignment: .bottom) {
-            HStack(spacing: 14) {
-                playerButton("backward.end.fill") { changeChannel(by: -1) }
-                Spacer()
-                Text(current.name)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                playerButton("forward.end.fill") { changeChannel(by: 1) }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
-            .background(.black.opacity(0.58))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.18)) { showControls.toggle() }
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 50)
-                .onEnded { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    changeChannel(by: value.translation.width < 0 ? 1 : -1)
-                }
-        )
     }
 
     private var channelPanel: some View {
@@ -110,8 +121,11 @@ struct PlayerScreen: View {
                 HStack(spacing: 8) {
                     ForEach(model.groups, id: \.self) { name in
                         Button(name) { group = name }
-                            .buttonStyle(.borderedProminent)
-                            .tint(group == name ? .cyan : .gray.opacity(0.38))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(group == name ? NM7Theme.navy : NM7Theme.textPrimary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(group == name ? NM7Theme.accent : NM7Theme.surface, in: Capsule())
                     }
                 }
                 .padding(.horizontal, 12)
@@ -121,56 +135,51 @@ struct PlayerScreen: View {
             List(groupChannels) { channel in
                 Button { play(channel) } label: {
                     HStack(spacing: 10) {
-                        AsyncImage(url: channel.logoURL) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().scaledToFit()
-                            } else {
-                                Image(systemName: "tv")
-                                    .foregroundStyle(.cyan)
-                            }
-                        }
-                        .frame(width: 54, height: 34)
-
-                        Text(channel.name).lineLimit(1)
+                        ChannelLogoMini(channel: channel)
+                        Text(channel.name)
+                            .lineLimit(1)
+                            .foregroundStyle(NM7Theme.textPrimary)
                         Spacer()
-
                         if channel.id == current.id {
                             Image(systemName: "waveform")
-                                .foregroundStyle(.cyan)
+                                .foregroundStyle(NM7Theme.accent)
                         }
                     }
                 }
                 .listRowBackground(
-                    channel.id == current.id
-                    ? Color.cyan.opacity(0.12)
-                    : Color.clear
+                    channel.id == current.id ? NM7Theme.accent.opacity(0.12) : Color.clear
                 )
             }
             .listStyle(.plain)
         }
-        .background(Color(red: 0.03, green: 0.04, blue: 0.06))
+        .background(NM7Theme.navy)
     }
 
     private var topBar: some View {
         HStack(spacing: 10) {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
-                    .font(.title3.weight(.bold))
-                    .frame(width: 42, height: 42)
+                    .font(.headline.weight(.bold))
+                    .frame(width: 40, height: 40)
             }
             .buttonStyle(.borderedProminent)
             .tint(.black.opacity(0.75))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(current.name).font(.headline).lineLimit(1)
-                Text(current.group).font(.caption).foregroundStyle(.secondary)
+                Text(current.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                Text(current.group)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.72))
             }
 
             Spacer()
 
-            VoiceSearchButton { transcript in
-                if let match = model.bestVoiceMatch(for: transcript) {
-                    play(match)
+            if !NM7DeviceProfile.isPhone {
+                VoiceSearchButton { transcript in
+                    if let match = model.bestVoiceMatch(for: transcript) { play(match) }
                 }
             }
 
@@ -180,21 +189,37 @@ struct PlayerScreen: View {
             .buttonStyle(.borderedProminent)
             .tint(.black.opacity(0.75))
         }
-        .padding(12)
+        .padding(NM7DeviceProfile.isPhone ? 8 : 12)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var globalGesture: some Gesture {
+        DragGesture(minimumDistance: 50)
+            .onEnded { value in
+                if abs(value.translation.width) > abs(value.translation.height) {
+                    changeChannel(by: value.translation.width < 0 ? 1 : -1)
+                } else if NM7DeviceProfile.isPhone && value.translation.height > 90 {
+                    dismiss()
+                }
+            }
     }
 
     private func playerButton(_ system: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: system)
                 .font(.headline)
-                .frame(width: 42, height: 42)
+                .frame(
+                    width: NM7DeviceProfile.isPhone ? 40 : 46,
+                    height: NM7DeviceProfile.isPhone ? 40 : 46
+                )
         }
         .buttonStyle(.bordered)
+        .tint(.white.opacity(0.85))
     }
 
     private func changeChannel(by offset: Int) {
         let list = groupChannels
-        guard let index = list.firstIndex(where: { $0.id == current.id }), !list.isEmpty else { return }
+        guard !list.isEmpty, let index = list.firstIndex(where: { $0.id == current.id }) else { return }
         play(list[(index + offset + list.count) % list.count])
     }
 
@@ -203,5 +228,30 @@ struct PlayerScreen: View {
         group = channel.group
         model.libraryStore.addRecent(channel)
         channelPlayer.play(channel)
+    }
+}
+
+private struct ChannelLogoMini: View {
+    let channel: Channel
+    @State private var data: Data?
+
+    var body: some View {
+        ZStack {
+            Circle().fill(NM7Theme.surface)
+
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(Circle())
+                    .padding(3)
+            } else {
+                Image(systemName: "tv.fill").foregroundStyle(NM7Theme.accent)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .task(id: channel.id) {
+            data = await ChannelLogoStore.shared.imageData(for: channel)
+        }
     }
 }

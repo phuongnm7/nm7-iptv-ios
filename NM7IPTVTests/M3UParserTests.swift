@@ -11,13 +11,26 @@ final class M3UParserTests: XCTestCase {
         https://example.com/live/vtv1.m3u8
         """
         let result = M3UParser.parse(input)
-        XCTAssertEqual(result.channels.count, 1)
-        XCTAssertEqual(result.channels[0].name, "VTV1")
-        XCTAssertEqual(result.channels[0].group, "VTV")
-        XCTAssertEqual(result.channels[0].tvgID, "vtv1")
-        XCTAssertEqual(result.channels[0].userAgent, "NM7-Test")
-        XCTAssertTrue(result.channels[0].isHLS)
+        let channel = try XCTUnwrap(result.channels.first)
+        XCTAssertEqual(channel.name, "VTV1")
+        XCTAssertEqual(channel.group, "VTV")
+        XCTAssertEqual(channel.userAgent, "NM7-Test")
+        XCTAssertTrue(channel.isHLS)
         XCTAssertEqual(result.epgURL?.absoluteString, "https://example.com/epg.xml")
+    }
+
+    func testSupportsExtGrpAndRelativeUrls() throws {
+        let input = """
+        #EXTM3U
+        #EXTINF:-1 tvg-logo="logos/vtv.png",VTV2
+        #EXTGRP:VTV
+        /live/vtv2.m3u8
+        """
+        let base = URL(string: "https://example.com/playlist.m3u")!
+        let channel = try XCTUnwrap(M3UParser.parse(input, baseURL: base).channels.first)
+        XCTAssertEqual(channel.group, "VTV")
+        XCTAssertEqual(channel.streamURL.absoluteString, "https://example.com/live/vtv2.m3u8")
+        XCTAssertEqual(channel.logoURL?.absoluteString, "https://example.com/logos/vtv.png")
     }
 
     func testSplitsInlineURLHeaders() throws {

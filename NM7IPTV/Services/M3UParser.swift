@@ -6,40 +6,59 @@ enum M3UParser {
         let epgURL: URL?
     }
 
-    static func parse(_ text: String) -> Result {
-        let lines = text.replacingOccurrences(of: "\u{FEFF}", with: "")
-            .components(separatedBy: .newlines)
-        var result: [Channel] = []
+    static func parse(_ text: String, baseURL: URL? = nil) -> Result {
+        let content = text.replacingOccurrences(of: "\u{FEFF}", with: "")
+        if content.contains("\0") { return Result(channels: [], epgURL: nil) }
+
+        if content.range(of: #"(?m)^\s*#EXT-X-"#, options: .regularExpression) != nil {
+            guard let baseURL else { return Result(channels: [], epgURL: nil) }
+            let channel = Channel(
+                name: "Luồng HLS",
+                group: "Phát trực tiếp",
+                tvgID: "",
+                logoURL: nil,
+                streamURL: baseURL,
+                httpHeaders: [:],
+                options: ["#KODIPROP:inputstream.adaptive.manifest_type=hls"]
+            )
+            return Result(channels: [channel], epgURL: nil)
+        }
+
         var metadata: String?
+        var groupOverride: String?
         var headers: [String: String] = [:]
         var options: [String] = []
         var epgURL: URL?
+        var channels: [Channel] = []
+        var seen = Set<String>()
 
-        for raw in lines {
+        for raw in content.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
 
-            if line.hasPrefix("#EXTM3U") {
+            if line.uppercased().hasPrefix("#EXTM3U") {
                 if let value = attribute("url-tvg", in: line) ?? attribute("x-tvg-url", in: line) {
-                    epgURL = URL(string: value)
+                    epgURL = resolveURL(value, baseURL: baseURL)
                 }
                 continue
             }
 
-            if line.hasPrefix("#EXTINF:") {
+            if line.uppercased().hasPrefix("#EXTINF:") {
                 metadata = line
+                groupOverride = nil
                 headers.removeAll(keepingCapacity: true)
                 options.removeAll(keepingCapacity: true)
                 continue
             }
 
-            if line.uppercased().hasPrefix("#KODIPROP:") {
-                options.append(line)
+            if line.uppercased().hasPrefix("#EXTGRP:") {
+                groupOverride = String(line.dropFirst("#EXTGRP:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
                 continue
             }
 
             if line.uppercased().hasPrefix("#EXTVLCOPT:") {
-                parseVLCOption(String(line.dropFirst("#EXTVLCOPT:".count)), into: &headers)
+                let value = String(line.dropFirst("#EXTVLCOPT:".count))
+                if !parseVLCOption(value, into: &headers) { options.append(line) }
                 continue
             }
 
@@ -48,29 +67,33 @@ enum M3UParser {
                 continue
             }
 
-            guard !line.hasPrefix("#"), let info = metadata else { continue }
+            if line.hasPrefix("#") {
+                if metadata != nil { options.append(line) }
+                continue
+            }
 
+            guard let info = metadata else { continue }
             let split = splitURLAndHeaders(line)
-            guard let url = URL(string: split.url),
+
+            guard let url = resolveURL(split.url, baseURL: baseURL),
                   let scheme = url.scheme?.lowercased(),
-                  ["http", "https"].contains(scheme) else {
+                  ["http", "https", "rtsp", "rtsps", "udp", "rtmp", "rtmps", "srt"].contains(scheme) else {
                 metadata = nil
+                groupOverride = nil
                 headers.removeAll(keepingCapacity: true)
                 options.removeAll(keepingCapacity: true)
                 continue
             }
 
-            headers.merge(split.headers) { _, inline in inline }
+            headers.merge(split.headers) { _, incoming in incoming }
 
-            let name = info.split(separator: ",", maxSplits: 1).last
-                .map(String.init)?
+            let name = info.split(separator: ",", maxSplits: 1).last.map(String.init)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Kênh"
-
-            let group = attribute("group-title", in: info) ?? "Chưa phân nhóm"
+            let group = groupOverride ?? attribute("group-title", in: info) ?? "Chưa phân nhóm"
             let tvgID = attribute("tvg-id", in: info) ?? ""
-            let logo = attribute("tvg-logo", in: info).flatMap(URL.init(string:))
+            let logo = attribute("tvg-logo", in: info).flatMap { resolveURL($0, baseURL: baseURL) }
 
-            result.append(Channel(
+            let channel = Channel(
                 name: name,
                 group: group,
                 tvgID: tvgID,
@@ -78,70 +101,79 @@ enum M3UParser {
                 streamURL: url,
                 httpHeaders: headers,
                 options: options
-            ))
+            )
+
+            if seen.insert(channel.id).inserted {
+                channels.append(channel)
+            }
 
             metadata = nil
+            groupOverride = nil
             headers.removeAll(keepingCapacity: true)
             options.removeAll(keepingCapacity: true)
         }
 
-        return Result(channels: result, epgURL: epgURL)
+        return Result(channels: channels, epgURL: epgURL)
     }
 
-    private static func splitURLAndHeaders(_ line: String) -> (url: String, headers: [String: String]) {
-        guard let pipe = line.firstIndex(of: "|") else {
-            return (line.trimmingCharacters(in: .whitespacesAndNewlines), [:])
-        }
-
-        let url = String(line[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let query = String(line[line.index(after: pipe)...])
-        var headers: [String: String] = [:]
-
-        for pair in query.split(separator: "&") {
-            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            let key = normalizeHeader(parts[0].removingPercentEncoding ?? parts[0])
-            let value = parts[1].removingPercentEncoding ?? parts[1]
-            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") {
-                headers[key] = value
-            }
-        }
-        return (url, headers)
-    }
-
-    private static func parseVLCOption(_ option: String, into headers: inout [String: String]) {
+    private static func parseVLCOption(_ option: String, into headers: inout [String: String]) -> Bool {
         let parts = option.split(separator: "=", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return }
-        let key = normalizeHeader(parts[0])
-        if !key.isEmpty { headers[key] = parts[1] }
+        guard parts.count == 2 else { return false }
+        switch parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "http-user-agent": headers["User-Agent"] = parts[1]
+        case "http-referrer", "http-referer": headers["Referer"] = parts[1]
+        case "http-origin": headers["Origin"] = parts[1]
+        case "http-cookie": headers["Cookie"] = parts[1]
+        default: return false
+        }
+        return true
     }
 
     private static func parseJSONHeaders(_ json: String, into headers: inout [String: String]) {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        for (rawKey, rawValue) in object {
-            guard let value = rawValue as? String else { continue }
-            let key = normalizeHeader(rawKey)
-            if !key.isEmpty, !value.contains("\r"), !value.contains("\n") {
-                headers[key] = value
-            }
+        for (key, value) in object {
+            guard let value = value as? String,
+                  !key.contains("\r"), !key.contains("\n"),
+                  !value.contains("\r"), !value.contains("\n") else { continue }
+            headers[key] = value
         }
     }
 
-    private static func normalizeHeader(_ raw: String) -> String {
-        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "http-user-agent", "user-agent", "useragent": return "User-Agent"
-        case "http-referrer", "http-referer", "referrer", "referer": return "Referer"
-        case "http-origin", "origin": return "Origin"
-        case "http-cookie", "cookie": return "Cookie"
-        default:
-            let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.range(of: #"^[!#$%&'*+.^_~0-9A-Za-z-]+$"#, options: .regularExpression) == nil ? "" : value
+    private static func splitURLAndHeaders(_ line: String) -> (url: String, headers: [String: String]) {
+        guard let pipe = line.firstIndex(of: "|") else { return (line, [:]) }
+        let url = String(line[..<pipe]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = String(line[line.index(after: pipe)...])
+        var result: [String: String] = [:]
+
+        for pair in query.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            let key = parts[0].removingPercentEncoding ?? parts[0]
+            let value = parts[1].removingPercentEncoding ?? parts[1]
+            guard !key.contains("\r"), !key.contains("\n"),
+                  !value.contains("\r"), !value.contains("\n") else { continue }
+
+            switch key.lowercased() {
+            case "referrer", "referer": result["Referer"] = value
+            case "user-agent", "useragent": result["User-Agent"] = value
+            case "origin": result["Origin"] = value
+            case "cookie": result["Cookie"] = value
+            default: result[key] = value
+            }
         }
+        return (url, result)
+    }
+
+    private static func resolveURL(_ value: String, baseURL: URL?) -> URL? {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        if let absolute = URL(string: clean), absolute.scheme != nil { return absolute }
+        return baseURL.flatMap { URL(string: clean, relativeTo: $0)?.absoluteURL }
     }
 
     private static func attribute(_ key: String, in line: String) -> String? {
-        let pattern = #"(?:^|\s)"# + NSRegularExpression.escapedPattern(for: key) + #"="([^"]*)""#
+        let pattern = #"(?:^|\s)"# + NSRegularExpression.escapedPattern(for: key) + #"\s*=\s*"([^"]*)""#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
               let range = Range(match.range(at: 1), in: line) else { return nil }

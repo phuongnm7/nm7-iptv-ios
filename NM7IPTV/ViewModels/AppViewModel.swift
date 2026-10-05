@@ -28,9 +28,7 @@ final class AppViewModel: ObservableObject {
     let libraryStore = LibraryStore()
     private let service = PlaylistService()
 
-    init() {
-        Task { await start() }
-    }
+    init() { Task { await start() } }
 
     var groups: [String] {
         var seen = Set<String>()
@@ -43,6 +41,7 @@ final class AppViewModel: ObservableObject {
 
     var visibleChannels: [Channel] {
         var result = channels
+
         if section == .favorites {
             result = result.filter { libraryStore.favoriteIDs.contains($0.id) }
         } else if section == .recent {
@@ -50,16 +49,19 @@ final class AppViewModel: ObservableObject {
             result = result.filter { order[$0.id] != nil }
                 .sorted { order[$0.id, default: 999] < order[$1.id, default: 999] }
         }
+
         if selectedGroup != "Tất cả" {
             result = result.filter { $0.group == selectedGroup }
         }
+
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
             result = result.filter {
-                $0.name.localizedCaseInsensitiveContains(query)
-                || $0.group.localizedCaseInsensitiveContains(query)
+                $0.name.localizedCaseInsensitiveContains(query) ||
+                $0.group.localizedCaseInsensitiveContains(query)
             }
         }
+
         return result
     }
 
@@ -74,16 +76,20 @@ final class AppViewModel: ObservableObject {
     func reload() async {
         isLoading = channels.isEmpty
         errorMessage = nil
+
         do {
             let loaded = try await service.fetch(from: sourceStore.activeSource)
             channels = loaded.channels
             epgURL = loaded.epgURL
-            if !groups.contains(selectedGroup) { selectedGroup = "Tất cả" }
+            if selectedGroup != "Tất cả" && !groups.contains(selectedGroup) {
+                selectedGroup = "Tất cả"
+            }
         } catch {
             if channels.isEmpty {
-                errorMessage = "Không tải được playlist: (error.localizedDescription)"
+                errorMessage = "Không tải được playlist: \(error.localizedDescription)"
             }
         }
+
         isLoading = false
     }
 
@@ -91,6 +97,7 @@ final class AppViewModel: ObservableObject {
         section = next
         searchText = ""
         selectedGroup = "Tất cả"
+
         switch next {
         case .television:
             if sourceStore.activeSourceID != SourceStore.defaultID {
@@ -133,7 +140,7 @@ final class AppViewModel: ObservableObject {
         if let channel = bestVoiceMatch(for: transcript) {
             play(channel)
         } else {
-            errorMessage = "Không tìm thấy kênh phù hợp với “(transcript)”."
+            errorMessage = "Không tìm thấy kênh phù hợp với “\(transcript)”."
         }
     }
 
