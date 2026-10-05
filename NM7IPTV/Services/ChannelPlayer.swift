@@ -75,7 +75,7 @@ final class ChannelPlayer: NSObject, ObservableObject {
 
         let asset = AVURLAsset(
             url: channel.streamURL,
-            options: [AVURLAssetHTTPHeaderFieldsKey: headers]
+            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
         )
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = 8
