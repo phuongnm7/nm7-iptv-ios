@@ -20,7 +20,7 @@ struct SidebarView: View {
                             Text("NM7 TV")
                                 .font(.system(size: 22, weight: .heavy))
                                 .foregroundStyle(NM7Theme.textPrimary)
-                            Text("1.0.71 • Real ClearKey + adaptive UI")
+                            Text("1.0.72 • Sports VLC + Real ClearKey")
                                 .font(.caption)
                                 .foregroundStyle(NM7Theme.textSecondary)
                         }
