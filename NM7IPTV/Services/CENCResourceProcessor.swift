@@ -88,7 +88,7 @@ final class CENCResourceProcessor: NSObject, UPlayerMediaResourceProcessor {
             for trex in childBoxes(data, parent: mvex).filter({ $0.type == "trex" }) {
                 guard trex.contentStart + 16 <= trex.end else { continue }
                 let trackID = readUInt32(data, trex.contentStart + 4)
-                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 16))
+                let defaultSampleSize = Int(readUInt32(data, trex.contentStart + 12))
                 trexDefaultSizes[trackID] = defaultSampleSize
             }
         }
